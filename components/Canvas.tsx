@@ -4,7 +4,7 @@ import type { Asset, WorkflowStep } from '../types';
 
 interface CanvasProps {
   assets: Asset[];
-  selectedAssetId?: string;
+  selectedAssetIds?: string[]; // Changed to array
   onAssetClick?: (asset: Asset) => void; // Primary action (Select)
   onPreview?: (asset: Asset) => void; // Secondary action (View Large)
   onDownload?: (asset: Asset) => void; // Tertiary action (Download)
@@ -24,7 +24,7 @@ const AssetItem: React.FC<{
   const src = isVideo ? asset.processedUrl : `data:${asset.originalFile.type || 'image/png'};base64,${asset.originalB64}`;
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const selectionClass = isSelected ? 'ring-4 ring-primary shadow-lg shadow-primary/20' : 'ring-1 ring-surface-lighter hover:ring-primary/50';
+  const selectionClass = isSelected ? 'ring-4 ring-primary shadow-lg shadow-primary/20 scale-[1.02]' : 'ring-1 ring-surface-lighter hover:ring-primary/50';
   
   const handleSaveFrameClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -92,6 +92,22 @@ const AssetItem: React.FC<{
           Frame
         </button>
       )}
+      
+      {/* Selection Badge */}
+      {isSelected && isGrid && (
+          <div className="absolute top-2 left-2 bg-primary text-white rounded-full p-1 shadow-md z-10">
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+               </svg>
+          </div>
+      )}
+      
+      {/* Label Badge */}
+      {asset.label && (
+        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-1 px-2 truncate text-center">
+            {asset.label}
+        </div>
+      )}
     </div>
   );
 };
@@ -118,7 +134,7 @@ const EmptyState: React.FC<{ step: WorkflowStep }> = ({ step }) => {
     );
 }
 
-const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, onPreview, onDownload, step }) => {
+const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetIds, onAssetClick, onPreview, onDownload, step }) => {
   const isGrid = assets.length > 1;
 
   const handleSaveFrame = (videoEl: HTMLVideoElement) => {
@@ -146,7 +162,7 @@ const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, 
                 <AssetItem 
                     key={asset.id} 
                     asset={asset} 
-                    isSelected={asset.id === selectedAssetId} 
+                    isSelected={selectedAssetIds?.includes(asset.id) || false} 
                     onPrimaryClick={onAssetClick ? () => onAssetClick(asset) : undefined} 
                     onPreview={onPreview ? () => onPreview(asset) : undefined}
                     onDownload={onDownload ? () => onDownload(asset) : undefined}
@@ -159,7 +175,7 @@ const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, 
         <div className="w-full h-full flex items-center justify-center">
             <AssetItem 
                 asset={assets[0]} 
-                isSelected={assets[0].id === selectedAssetId} 
+                isSelected={selectedAssetIds?.includes(assets[0].id) || false} 
                 isGrid={false} 
                 onSaveFrame={handleSaveFrame}
                 onPreview={onPreview ? () => onPreview(assets[0]) : undefined}

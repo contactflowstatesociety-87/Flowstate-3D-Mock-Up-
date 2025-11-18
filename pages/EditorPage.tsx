@@ -28,7 +28,7 @@ const INITIAL_EDITOR_STATE: EditorState = {
   generationMode: 'default',
   uploadedAssets: [],
   generatedFlatLays: [],
-  selectedFlatLay: null,
+  selectedFlatLays: [], // Changed to array
   staticMockup: null,
   animatedMockup: null,
   animationConfig: {
@@ -236,9 +236,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     const newGeneratedAssets: Asset[] = [];
 
     try {
-        // Helper functions to generate sets
         const generateStrictSet = async (suffix = '') => {
-            // Strict Flat Lay
              try {
                  const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
                  newGeneratedAssets.push({
@@ -250,9 +248,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                  });
              } catch (e) { console.warn("Strict flat lay failed", e); }
              
-             // Strict 3D Mockup
              try {
-                 const res2 = await service.generateStrict3DMockup(originalB64, mimeType, mode);
+                 // Pass array for consistency, even if just one image here
+                 const res2 = await service.generateStrict3DMockup([originalB64], mimeType, mode);
                  newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}${suffix}`,
                     type: 'image',
@@ -264,9 +262,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         };
 
         const generateFlexibleSet = async (suffix = '') => {
-            // Flexible Studio Photo
              try {
-                const res3 = await service.generateFlexibleStudioPhoto(originalB64, mimeType, mode);
+                const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, mode);
                 newGeneratedAssets.push({
                    id: `asset-flex-photo-${Date.now()}${suffix}`,
                    type: 'image',
@@ -276,7 +273,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 });
              } catch (e) { console.warn("Flexible studio photo failed", e); }
 
-             // Flexible Video
              try {
                  if (!suffix) setLoadingMessage("Generating Flexible 3D Video...");
                  const videoAsset = await handleVeoOperation(service.generateFlexibleVideo(originalB64, mimeType, mode));
@@ -301,7 +297,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              setLoadingMessage(`Generating Flexible Mode outputs (Batch 2)...`);
              await generateFlexibleSet(' (2)');
         } else {
-             // Default or Mixed modes: Generate 1 full set (4 items)
              setLoadingMessage(`Generating Strict outputs...`);
              await generateStrictSet();
              setLoadingMessage(`Generating Flexible outputs...`);
@@ -315,8 +310,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         setEditorState(prev => ({
             ...prev,
             generatedFlatLays: newGeneratedAssets,
-            // Auto-select the first image for editing
-            selectedFlatLay: newGeneratedAssets.find(a => a.type === 'image') || null
+            selectedFlatLays: [] // Reset selection on new generation
         }));
 
     } catch (err: any) {
@@ -331,7 +325,26 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   };
 
   const handleSelectFlatLay = (asset: Asset) => {
-    setEditorState(prev => ({...prev, selectedFlatLay: asset, currentStep: 'animate'}));
+    setEditorState(prev => {
+        const currentSelection = prev.selectedFlatLays || [];
+        const isSelected = currentSelection.some(a => a.id === asset.id);
+        
+        let newSelection;
+        if (isSelected) {
+            newSelection = currentSelection.filter(a => a.id !== asset.id);
+        } else {
+            newSelection = [...currentSelection, asset];
+        }
+        return { ...prev, selectedFlatLays: newSelection };
+    });
+  };
+
+  const handleNextStep = () => {
+      if (editorState.selectedFlatLays.length > 0) {
+          setEditorState(prev => ({ ...prev, currentStep: 'animate' }));
+      } else {
+          setError("Please select at least one image to proceed.");
+      }
   };
 
   const handleApplyEdit = async (modifiedBase64: string, prompt: string) => {
@@ -353,7 +366,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
           setEditorState(prev => ({
               ...prev,
               generatedFlatLays: [newAsset, ...prev.generatedFlatLays],
-              selectedFlatLay: newAsset
+              selectedFlatLays: [newAsset] // Auto-select the edited version
           }));
           setToastMessage("Edit applied successfully!");
       } catch (err: any) {
@@ -364,8 +377,13 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   };
   
   const handleAnimate = async () => {
-    if (!editorState.selectedFlatLay) return;
-    const { originalB64, originalFile } = editorState.selectedFlatLay;
+    if (editorState.selectedFlatLays.length === 0) return;
+    
+    // Use all selected flat lays for static generation to allow model to average/improve details
+    const selectedAssets = editorState.selectedFlatLays;
+    // Use primary (first) for video as Veo takes single input usually
+    const primaryAsset = selectedAssets[0];
+    
     const { preset, aspectRatio, customPrompt, generateStatic, generateVideo } = editorState.animationConfig;
 
     setIsLoading(true);
@@ -378,7 +396,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         if (generateStatic) {
             tasks.push((async () => {
                 setLoadingMessage("Generating 3D Static Mockup...");
-                const res = await service.generateStaticMockup(originalB64, originalFile.type);
+                // Map assets to base64 strings for the service
+                const base64Images = selectedAssets.map(a => a.originalB64);
+                const res = await service.generateStrict3DMockup(base64Images, primaryAsset.originalFile.type, editorState.generationMode);
                 const staticAsset: Asset = {
                     id: `asset-static-${Date.now()}`,
                     type: 'image',
@@ -410,7 +430,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                     prompt += presetPrompts[preset];
                 }
                 
-                const videoAsset = await handleVeoOperation(service.generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
+                const videoAsset = await handleVeoOperation(service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
                 videoAsset.label = 'Animated Video';
                 setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
             })());
@@ -437,8 +457,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   };
 
   const handleGenerateScene = async (scenePrompt: string) => {
-    if (!editorState.selectedFlatLay) return;
-    const { originalB64, originalFile } = editorState.selectedFlatLay;
+    if (editorState.selectedFlatLays.length === 0) return;
+    const primaryAsset = editorState.selectedFlatLays[0];
     const { preset, customPrompt, aspectRatio } = editorState.animationConfig;
 
     let animationDescription = "";
@@ -464,7 +484,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     setIsLoading(true);
     setLoadingMessage("Placing your animation in a new scene...");
     try {
-        const videoAsset = await handleVeoOperation(service.generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
+        const videoAsset = await handleVeoOperation(service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
         videoAsset.label = 'Scene Animation';
         setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
     } catch (e: any) {
@@ -545,7 +565,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              if (editorState.staticMockup) results.push(editorState.staticMockup);
              if (editorState.animatedMockup) results.push(editorState.animatedMockup);
              if (results.length > 0) return results;
-             return editorState.selectedFlatLay ? [editorState.selectedFlatLay] : [];
+             return editorState.selectedFlatLays.length > 0 ? editorState.selectedFlatLays : [];
         default: return [];
     }
   };
@@ -555,9 +575,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       {(isLoading || isSaving) && <Loader message={isSaving ? 'Saving project...' : loadingMessage} />}
       {isProjectsModalOpen && <ProjectsModal projects={projects} onLoad={handleLoadProject} onDelete={handleDeleteProject} onClose={() => setIsProjectsModalOpen(false)} />}
       {isSaveModalOpen && <SaveProjectModal projectName={currentProject?.name || ''} onSave={handleSaveProject} onClose={() => setIsSaveModalOpen(false)} />}
-      {isEditorModalOpen && editorState.selectedFlatLay && (
+      
+      {/* Editor Modal - Only if exactly one item is selected */}
+      {isEditorModalOpen && editorState.selectedFlatLays.length === 1 && (
           <ImageEditorModal 
-            imageUrl={`data:${editorState.selectedFlatLay.originalFile.type};base64,${editorState.selectedFlatLay.originalB64}`} 
+            imageUrl={`data:${editorState.selectedFlatLays[0].originalFile.type};base64,${editorState.selectedFlatLays[0].originalB64}`} 
             onSave={handleApplyEdit}
             onClose={() => setIsEditorModalOpen(false)} 
           />
@@ -598,6 +620,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             onEditFlatLay={() => setIsEditorModalOpen(true)}
             onDownloadAssets={downloadResults}
             onModeChange={handleModeChange}
+            onNextStep={handleNextStep}
         />
       </div>
       
@@ -662,7 +685,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             <Canvas
                 assets={getCanvasAssets()}
                 step={editorState.currentStep}
-                selectedAssetId={editorState.selectedFlatLay?.id}
+                selectedAssetIds={editorState.selectedFlatLays.map(a => a.id)}
                 onAssetClick={editorState.currentStep === 'flatlay' ? handleSelectFlatLay : undefined}
                 onPreview={handlePreviewAsset}
                 onDownload={downloadAsset}

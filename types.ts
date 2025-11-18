@@ -24,7 +24,7 @@ export interface EditorState {
   generationMode: GenerationMode;
   uploadedAssets: Asset[];
   generatedFlatLays: Asset[];
-  selectedFlatLay: Asset | null;
+  selectedFlatLays: Asset[]; // Changed from single Asset | null to Asset[]
   staticMockup: Asset | null;
   animatedMockup: Asset | null;
   animationConfig: AnimationConfig;

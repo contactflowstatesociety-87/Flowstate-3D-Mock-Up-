@@ -5,13 +5,14 @@ interface Props {
   onGenerate: () => void;
   onEdit: () => void;
   onDownloadAll: () => void;
+  onNext: () => void; // New prop
   isLoading: boolean;
   hasUploadedAssets: boolean;
   hasGeneratedLays: boolean;
-  hasSelectedFlatLay: boolean;
+  selectedCount: number; // Changed from hasSelectedFlatLay
 }
 
-const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, isLoading, hasUploadedAssets, hasGeneratedLays, hasSelectedFlatLay }) => {
+const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, onNext, isLoading, hasUploadedAssets, hasGeneratedLays, selectedCount }) => {
   return (
     <>
       <p className="text-text-subtle text-sm">
@@ -39,7 +40,8 @@ const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, isLo
                 Download All 4 Options
            </button>
            
-           {hasSelectedFlatLay ? (
+           {/* Edit Button - Only visible if exactly 1 item is selected */}
+           {selectedCount === 1 ? (
                <button
                 onClick={onEdit}
                 className="w-full bg-brand-green text-white font-medium py-2 rounded-lg hover:bg-brand-green-dark transition-colors flex items-center justify-center gap-2"
@@ -50,8 +52,19 @@ const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, isLo
                    Edit / Fix Selected
                </button>
            ) : (
-               <p className="text-xs text-text-subtle text-center italic">Select an image on the right to Edit or Fix it.</p>
+               <div className="text-xs text-text-subtle text-center italic p-2 border border-dashed border-surface-lighter rounded">
+                   {selectedCount === 0 ? "Select an image to enable editing." : "Select only one image to edit."}
+               </div>
            )}
+
+            {/* Next Button - Visible if at least 1 item is selected */}
+            <button
+                onClick={onNext}
+                disabled={selectedCount === 0}
+                className="w-full bg-primary text-white font-bold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-lightest disabled:cursor-not-allowed transition-colors mt-4 shadow-lg"
+            >
+                Next: Create Animation {selectedCount > 0 ? `(${selectedCount})` : ''} &rarr;
+            </button>
         </div>
       )}
     </>

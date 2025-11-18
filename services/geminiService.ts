@@ -51,18 +51,22 @@ const getModeHeader = (mode: GenerationMode) => {
 
 
 /**
- * Generic function to transform an image using Gemini 2.5 Flash Image.
- * Used for Flat Lays, Editing, and Static Mockups.
+ * Generic function to transform images using Gemini 2.5 Flash Image.
  */
-const transformImage = async (base64Image: string, mimeType: string, prompt: string): Promise<GenerationResult> => {
+const transformImage = async (base64Images: string | string[], mimeType: string, prompt: string): Promise<GenerationResult> => {
     const ai = getAiClient();
+    const images = Array.isArray(base64Images) ? base64Images : [base64Images];
+    
+    const parts = [];
+    for (const b64 of images) {
+        parts.push({ inlineData: { data: b64, mimeType: mimeType } });
+    }
+    parts.push({ text: prompt });
+
     const response = await withRetry(() => ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
-            parts: [
-                { inlineData: { data: base64Image, mimeType: mimeType } },
-                { text: prompt },
-            ],
+            parts: parts,
         },
         config: {
             responseModalities: [Modality.IMAGE],
@@ -81,22 +85,14 @@ const transformImage = async (base64Image: string, mimeType: string, prompt: str
 
 
 export const generateFlatLayOptions = async (base64Image: string, mimeType: string): Promise<GenerationResult[]> => {
-    // Kept for backward compatibility or generic use if needed, but primary logic uses specific functions below
+    // Kept for backward compatibility
     const prompt = "Create a professional studio flat lay of this clothing item on a clean, neutral light-gray background. Strictly preserve the exact original product details, logos, colors, and fabric texture. Do not alter the design of the garment. High resolution, photorealistic, soft studio lighting.";
-
-    const results: GenerationResult[] = [];
     try {
         const result = await transformImage(base64Image, mimeType, prompt);
-        results.push(result);
+        return [result];
     } catch (error) {
-        console.warn(`Flat lay generation failed`, error);
+        throw new Error("Flat lay generation failed.");
     }
-    
-    if (results.length === 0) {
-        throw new Error("Flat lay generation failed. Please try again.");
-    }
-    
-    return results;
 };
 
 export const editImage = async (base64Image: string, mimeType: string, userPrompt: string): Promise<GenerationResult> => {
@@ -133,7 +129,7 @@ Rules:
     return transformImage(base64Image, mimeType, prompt);
 };
 
-export const generateStrict3DMockup = async (base64Image: string, mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
+export const generateStrict3DMockup = async (base64Images: string | string[], mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
     const header = getModeHeader(mode);
     const prompt = `${header}
 
@@ -149,10 +145,10 @@ Rules:
 - Lighting: Soft diffused studio light, no harsh contrast.
 - Background: Clean studio gray/white.
 - Camera: Centered, 50-85mm lens equivalent.`;
-    return transformImage(base64Image, mimeType, prompt);
+    return transformImage(base64Images, mimeType, prompt);
 };
 
-export const generateFlexibleStudioPhoto = async (base64Image: string, mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
+export const generateFlexibleStudioPhoto = async (base64Images: string | string[], mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
     const header = getModeHeader(mode);
     const prompt = `${header}
 
@@ -166,7 +162,7 @@ Rules:
 - Camera angle can be slightly more dynamic.
 - Enhance fabric microtexture and realism.
 - Look like a high-end commercial campaign.`;
-    return transformImage(base64Image, mimeType, prompt);
+    return transformImage(base64Images, mimeType, prompt);
 };
 
 export const generateFlexibleVideo = async (base64Image: string, mimeType: string, mode: GenerationMode): Promise<Operation<GenerateVideosResponse>> => {
@@ -197,7 +193,7 @@ Rules:
         config: {
             numberOfVideos: 1,
             resolution: '720p',
-            aspectRatio: '9:16', // Defaulting to portrait for social/mobile
+            aspectRatio: '9:16',
         }
     }));
 };

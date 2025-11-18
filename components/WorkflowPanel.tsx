@@ -21,6 +21,7 @@ interface WorkflowPanelProps {
   onDownloadAssets?: () => void;
   // New props for mode selection
   onModeChange: (mode: GenerationMode) => void;
+  onNextStep?: () => void;
 }
 
 const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean; isComplete: boolean; children: React.ReactNode; }> = ({ number, title, isActive, isComplete, children }) => {
@@ -41,9 +42,9 @@ const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean;
 const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
     const { 
         editorState, isLoading, onFilesUploaded, onGenerateFlatLays, onAnimate, onGenerateScene, onUpdateAnimationConfig, onClose,
-        onDownloadAllFlatLays, onEditFlatLay, onDownloadAssets, onModeChange
+        onDownloadAllFlatLays, onEditFlatLay, onDownloadAssets, onModeChange, onNextStep
     } = props;
-    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLay, animatedMockup, staticMockup, animationConfig, generationMode } = editorState;
+    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLays, animatedMockup, staticMockup, animationConfig, generationMode } = editorState;
   
     return (
     <aside className="w-full md:w-96 bg-surface-light flex flex-col h-full border-r border-surface-lighter">
@@ -79,10 +80,11 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
             onGenerate={onGenerateFlatLays} 
             onEdit={onEditFlatLay || (() => {})} 
             onDownloadAll={onDownloadAllFlatLays || (() => {})}
+            onNext={onNextStep || (() => {})}
             isLoading={isLoading} 
             hasUploadedAssets={uploadedAssets.length > 0} 
             hasGeneratedLays={generatedFlatLays.length > 0}
-            hasSelectedFlatLay={selectedFlatLay !== null}
+            selectedCount={selectedFlatLays ? selectedFlatLays.length : 0}
           />
         </WorkflowStep>
 
