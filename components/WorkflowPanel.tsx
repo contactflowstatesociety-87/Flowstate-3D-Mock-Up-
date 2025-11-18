@@ -1,9 +1,11 @@
+
 import React from 'react';
-import type { EditorState, AnimationConfig } from '../types';
+import type { EditorState, AnimationConfig, GenerationMode } from '../types';
 import Step1Upload from './workflow/Step1_Upload';
 import Step2FlatLay from './workflow/Step2_FlatLay';
 import Step3Animate from './workflow/Step3_Animate';
 import Step4Scene from './workflow/Step4_Scene';
+import ModeSelector from './ModeSelector';
 
 interface WorkflowPanelProps {
   editorState: EditorState;
@@ -14,6 +16,11 @@ interface WorkflowPanelProps {
   onGenerateScene: (prompt: string) => void;
   onUpdateAnimationConfig: (config: Partial<AnimationConfig>) => void;
   onClose?: () => void;
+  onDownloadAllFlatLays?: () => void;
+  onEditFlatLay?: () => void;
+  onDownloadAssets?: () => void;
+  // New props for mode selection
+  onModeChange: (mode: GenerationMode) => void;
 }
 
 const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean; isComplete: boolean; children: React.ReactNode; }> = ({ number, title, isActive, isComplete, children }) => {
@@ -32,12 +39,12 @@ const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean;
 };
 
 const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
-    const { editorState, isLoading, onFilesUploaded, onGenerateFlatLays, onAnimate, onGenerateScene, onUpdateAnimationConfig, onClose } = props;
-    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLay, animatedMockup, animationConfig } = editorState;
+    const { 
+        editorState, isLoading, onFilesUploaded, onGenerateFlatLays, onAnimate, onGenerateScene, onUpdateAnimationConfig, onClose,
+        onDownloadAllFlatLays, onEditFlatLay, onDownloadAssets, onModeChange
+    } = props;
+    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLay, animatedMockup, staticMockup, animationConfig, generationMode } = editorState;
   
-    const stepNumber = { upload: 1, flatlay: 2, animate: 3, scene: 4 };
-    const currentStepNumber = stepNumber[currentStep];
-
     return (
     <aside className="w-full md:w-96 bg-surface-light flex flex-col h-full border-r border-surface-lighter">
       <div className="p-4 border-b border-surface-lighter flex justify-between items-start">
@@ -57,17 +64,37 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
             </button>
         )}
       </div>
+      
       <div className="flex-grow overflow-y-auto p-4 space-y-2">
+        
+        {/* Mode Selector at the top of the controls */}
+        <ModeSelector selectedMode={generationMode} onChangeMode={onModeChange} />
+
         <WorkflowStep number={1} title="Upload Images" isActive={currentStep === 'upload'} isComplete={uploadedAssets.length > 0}>
           <Step1Upload onFilesUploaded={onFilesUploaded} isLoading={isLoading} />
         </WorkflowStep>
         
-        <WorkflowStep number={2} title="Generate Flat Lays" isActive={currentStep === 'flatlay'} isComplete={selectedFlatLay !== null}>
-          <Step2FlatLay onGenerate={onGenerateFlatLays} isLoading={isLoading} hasUploadedAssets={uploadedAssets.length > 0} hasGeneratedLays={generatedFlatLays.length > 0} />
+        <WorkflowStep number={2} title="4X Generation" isActive={currentStep === 'flatlay'} isComplete={generatedFlatLays.length > 0}>
+          <Step2FlatLay 
+            onGenerate={onGenerateFlatLays} 
+            onEdit={onEditFlatLay || (() => {})} 
+            onDownloadAll={onDownloadAllFlatLays || (() => {})}
+            isLoading={isLoading} 
+            hasUploadedAssets={uploadedAssets.length > 0} 
+            hasGeneratedLays={generatedFlatLays.length > 0}
+            hasSelectedFlatLay={selectedFlatLay !== null}
+          />
         </WorkflowStep>
 
-        <WorkflowStep number={3} title="Create Animation" isActive={currentStep === 'animate'} isComplete={animatedMockup !== null}>
-          <Step3Animate onAnimate={onAnimate} isLoading={isLoading} config={animationConfig} onConfigChange={onUpdateAnimationConfig} />
+        <WorkflowStep number={3} title="Create Animation" isActive={currentStep === 'animate'} isComplete={animatedMockup !== null || staticMockup !== null}>
+          <Step3Animate 
+            onAnimate={onAnimate} 
+            onDownloadAssets={onDownloadAssets || (() => {})}
+            isLoading={isLoading} 
+            config={animationConfig} 
+            onConfigChange={onUpdateAnimationConfig}
+            hasGeneratedAssets={!!(animatedMockup || staticMockup)}
+          />
         </WorkflowStep>
 
         <WorkflowStep number={4} title="Place in Scene" isActive={currentStep === 'scene'} isComplete={false}>

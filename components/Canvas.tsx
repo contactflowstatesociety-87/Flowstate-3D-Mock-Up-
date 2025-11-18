@@ -1,41 +1,95 @@
+
 import React, { useRef } from 'react';
 import type { Asset, WorkflowStep } from '../types';
 
 interface CanvasProps {
   assets: Asset[];
   selectedAssetId?: string;
-  onAssetClick?: (asset: Asset) => void;
+  onAssetClick?: (asset: Asset) => void; // Primary action (Select)
+  onPreview?: (asset: Asset) => void; // Secondary action (View Large)
+  onDownload?: (asset: Asset) => void; // Tertiary action (Download)
   step: WorkflowStep;
 }
 
-const AssetItem: React.FC<{ asset: Asset; isSelected: boolean; onClick?: () => void; isGrid: boolean; onSaveFrame?: (videoEl: HTMLVideoElement) => void; }> = ({ asset, isSelected, onClick, isGrid, onSaveFrame }) => {
+const AssetItem: React.FC<{ 
+    asset: Asset; 
+    isSelected: boolean; 
+    onPrimaryClick?: () => void; 
+    onPreview?: () => void;
+    onDownload?: () => void;
+    isGrid: boolean; 
+    onSaveFrame?: (videoEl: HTMLVideoElement) => void; 
+}> = ({ asset, isSelected, onPrimaryClick, onPreview, onDownload, isGrid, onSaveFrame }) => {
   const isVideo = asset.type === 'video';
   const src = isVideo ? asset.processedUrl : `data:${asset.originalFile.type || 'image/png'};base64,${asset.originalB64}`;
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const selectionClass = isSelected ? 'ring-4 ring-primary' : 'ring-2 ring-transparent';
-  const hoverClass = onClick ? 'hover:ring-primary cursor-pointer' : '';
-
-  const handleSaveFrameClick = () => {
+  const selectionClass = isSelected ? 'ring-4 ring-primary shadow-lg shadow-primary/20' : 'ring-1 ring-surface-lighter hover:ring-primary/50';
+  
+  const handleSaveFrameClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (videoRef.current && onSaveFrame) {
       onSaveFrame(videoRef.current);
     }
   };
 
+  const handlePreviewClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onPreview?.();
+  };
+
+  const handleDownloadClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onDownload?.();
+  };
+
   return (
-    <div className="w-full h-full relative">
+    <div 
+        className={`relative group ${isGrid ? 'w-full h-64' : 'w-full h-full'} rounded-lg overflow-hidden bg-surface-light/30 transition-all duration-200 ${isGrid ? selectionClass : ''}`}
+        onClick={onPrimaryClick || onPreview} // Fallback to preview if no primary action
+    >
       {isVideo ? (
-        <video ref={videoRef} src={src} controls autoPlay loop className="w-full h-full object-contain" />
+        <video ref={videoRef} src={src} controls muted loop className="w-full h-full object-contain" />
       ) : (
-        <img src={src} alt={asset.prompt || 'asset'} className={`w-full h-full object-contain transition-all duration-200 ${isGrid ? `${selectionClass} ${hoverClass} rounded-lg` : ''}`} onClick={onClick} />
+        <img src={src} alt={asset.prompt || 'asset'} className="w-full h-full object-contain" />
       )}
+
+      {/* Overlay Controls - Visible on Hover */}
+      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-4 pointer-events-none">
+          <div className="pointer-events-auto flex gap-2">
+            {onPreview && (
+                <button 
+                    onClick={handlePreviewClick}
+                    className="bg-surface-light/90 hover:bg-white text-surface-dark p-2 rounded-full shadow-lg transform hover:scale-110 transition-all"
+                    title="Preview Full Screen"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                    </svg>
+                </button>
+            )}
+             {onDownload && (
+                <button 
+                    onClick={handleDownloadClick}
+                    className="bg-surface-light/90 hover:bg-white text-surface-dark p-2 rounded-full shadow-lg transform hover:scale-110 transition-all"
+                    title="Download"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                </button>
+            )}
+          </div>
+      </div>
+
+      {/* Existing Save Frame Button for Video */}
       {isVideo && onSaveFrame && (
         <button
           onClick={handleSaveFrameClick}
-          className="absolute bottom-4 right-4 bg-surface-dark/50 text-white px-3 py-2 rounded-lg text-sm hover:bg-opacity-75 transition-all flex items-center gap-2"
+          className="absolute bottom-2 right-2 bg-surface-dark/70 text-white px-2 py-1 rounded text-xs hover:bg-opacity-90 transition-all flex items-center gap-1 z-10"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 00-1 1v5.586L6.293 6.293a1 1 0 10-1.414 1.414l5 5a1 1 0 001.414 0l5-5a1 1 0 00-1.414-1.414L11 9.586V4a1 1 0 00-1-1z" /><path d="M3 12a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" /></svg>
-          Save Frame
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 00-1 1v5.586L6.293 6.293a1 1 0 10-1.414 1.414l5 5a1 1 0 001.414 0l5-5a1 1 0 00-1.414-1.414L11 9.586V4a1 1 0 00-1-1z" /><path d="M3 12a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" /></svg>
+          Frame
         </button>
       )}
     </div>
@@ -64,7 +118,7 @@ const EmptyState: React.FC<{ step: WorkflowStep }> = ({ step }) => {
     );
 }
 
-const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, step }) => {
+const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, onPreview, onDownload, step }) => {
   const isGrid = assets.length > 1;
 
   const handleSaveFrame = (videoEl: HTMLVideoElement) => {
@@ -83,17 +137,35 @@ const Canvas: React.FC<CanvasProps> = ({ assets, selectedAssetId, onAssetClick, 
   };
 
   return (
-    <div className="flex-1 bg-surface-dark flex items-center justify-center rounded-lg relative p-4">
+    <div className="flex-1 bg-surface-dark flex items-center justify-center rounded-lg relative p-4 overflow-hidden">
       {assets.length === 0 ? (
         <EmptyState step={step} />
       ) : isGrid ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full h-full overflow-y-auto p-2">
             {assets.map(asset => (
-                <AssetItem key={asset.id} asset={asset} isSelected={asset.id === selectedAssetId} onClick={() => onAssetClick?.(asset)} isGrid={true} />
+                <AssetItem 
+                    key={asset.id} 
+                    asset={asset} 
+                    isSelected={asset.id === selectedAssetId} 
+                    onPrimaryClick={onAssetClick ? () => onAssetClick(asset) : undefined} 
+                    onPreview={onPreview ? () => onPreview(asset) : undefined}
+                    onDownload={onDownload ? () => onDownload(asset) : undefined}
+                    isGrid={true} 
+                    onSaveFrame={handleSaveFrame}
+                />
             ))}
         </div>
       ) : (
-        <AssetItem asset={assets[0]} isSelected={assets[0].id === selectedAssetId} isGrid={false} onSaveFrame={handleSaveFrame} />
+        <div className="w-full h-full flex items-center justify-center">
+            <AssetItem 
+                asset={assets[0]} 
+                isSelected={assets[0].id === selectedAssetId} 
+                isGrid={false} 
+                onSaveFrame={handleSaveFrame}
+                onPreview={onPreview ? () => onPreview(assets[0]) : undefined}
+                onDownload={onDownload ? () => onDownload(assets[0]) : undefined}
+            />
+        </div>
       )}
     </div>
   );

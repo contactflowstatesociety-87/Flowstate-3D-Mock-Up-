@@ -1,5 +1,5 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
-// FIX: Add GenerateVideosResponse to correctly type the video generation operation.
 import type { Operation, GenerateVideosResponse } from '@google/genai';
 import Canvas from '../components/Canvas';
 import Loader from '../components/Loader';
@@ -7,10 +7,12 @@ import ProjectsModal from '../components/ProjectsModal';
 import SaveProjectModal from '../components/SaveProjectModal';
 import WorkflowPanel from '../components/WorkflowPanel';
 import Toast from '../components/Toast';
+import ImageEditorModal from '../components/ImageEditorModal';
+import MediaPreviewModal from '../components/MediaPreviewModal';
 import useHistoryState from '../hooks/useHistoryState';
-import { generateFlatLayOptions, generateVideoFromImage, checkVideoOperationStatus } from '../services/geminiService';
+import * as service from '../services/geminiService';
 import * as projectService from '../services/projectService';
-import type { Asset, VeoGenerationMessages, User, Project, EditorState, AnimationConfig, AnimationPreset } from '../types';
+import type { Asset, VeoGenerationMessages, User, Project, EditorState, AnimationConfig, AnimationPreset, GenerationMode } from '../types';
 
 const VEO_GENERATION_MESSAGES: VeoGenerationMessages = {
   0: "Warming up the digital loom...",
@@ -23,14 +25,18 @@ const VEO_GENERATION_MESSAGES: VeoGenerationMessages = {
 
 const INITIAL_EDITOR_STATE: EditorState = {
   currentStep: 'upload',
+  generationMode: 'default',
   uploadedAssets: [],
   generatedFlatLays: [],
   selectedFlatLay: null,
+  staticMockup: null,
   animatedMockup: null,
   animationConfig: {
     preset: '360 Spin',
     aspectRatio: '9:16',
     customPrompt: null,
+    generateStatic: true,
+    generateVideo: true,
   },
 };
 
@@ -60,7 +66,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isProjectsModalOpen, setIsProjectsModalOpen] = useState(false);
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   
   // Mobile sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -94,12 +102,25 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     createNewProject();
   }, [user.id, loadProjects, createNewProject]);
 
-  // FIX: Use Operation<GenerateVideosResponse> to correctly type the video generation promise.
+  const downloadAsset = (asset: Asset) => {
+    const link = document.createElement('a');
+    if (asset.type === 'video' && asset.processedUrl) {
+        link.href = asset.processedUrl;
+        link.download = `${asset.originalFile.name || 'video'}.mp4`;
+    } else {
+        link.href = `data:${asset.originalFile.type};base64,${asset.originalB64}`;
+        link.download = `${asset.originalFile.name || 'image'}-${asset.id.slice(-6)}.png`;
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const handlePreviewAsset = (asset: Asset) => {
+      setPreviewAsset(asset);
+  };
+
   const handleVeoOperation = useCallback(async (operationPromise: Promise<Operation<GenerateVideosResponse>>) => {
-    setIsLoading(true);
-    setError(null);
-    // Close sidebar on mobile when operation starts to show progress/canvas
-    setIsSidebarOpen(false); 
     let messageTimer: ReturnType<typeof setInterval>;
     let elapsedTime = 0;
   
@@ -119,7 +140,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       let operation = await operationPromise;
       while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 5000));
-        operation = await checkVideoOperationStatus(operation);
+        operation = await service.checkVideoOperationStatus(operation);
       }
   
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
@@ -127,88 +148,58 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
         const blob = await videoResponse.blob();
         const videoUrl = URL.createObjectURL(blob);
-        const newAsset: Asset = {
+        return {
           id: `asset-${Date.now()}`,
           type: 'video',
           originalFile: { name: 'animated-mockup.mp4', type: 'video/mp4' },
           originalB64: '',
           processedUrl: videoUrl,
-        };
-        // Determine if this is the animation or the final scene
-        if (editorState.currentStep === 'animate') {
-          setEditorState(prev => ({ ...prev, animatedMockup: newAsset, currentStep: 'scene' }));
-        } else {
-           setEditorState(prev => ({ ...prev, animatedMockup: newAsset })); // Final asset
-        }
+        } as Asset;
       } else {
         throw new Error("Video generation completed, but no download link was provided.");
       }
     } catch (err: any) {
-      console.error(err);
-      let errorMessage = "An unknown error occurred during video generation.";
-      if (err.message) errorMessage = `Video Generation Failed: ${err.message}`;
-      if (err.message?.includes("Requested entity was not found")) {
-        errorMessage = "Your API Key is invalid or expired. Please select a valid key.";
-        resetApiKeyStatus();
-      }
-      setError(errorMessage);
+        throw err;
     } finally {
+      // @ts-ignore
       clearInterval(messageTimer);
-      setIsLoading(false);
     }
-  }, [resetApiKeyStatus, editorState.currentStep, setEditorState]);
+  }, []);
 
   const handleFilesUploaded = (files: File[]) => {
-    if (!files || files.length === 0) {
-      return;
-    }
+    if (!files || files.length === 0) return;
 
     setLoadingMessage('Preparing your images...');
     setIsLoading(true);
     setError(null);
-    // Keep sidebar open on mobile for user to verify upload or proceed? 
-    // Usually better to see the canvas. Let's close it.
     setIsSidebarOpen(false);
 
     const assetPromises = files.map(file =>
       new Promise<Asset>((resolve, reject) => {
-        // Validation Stage 1: File Type & Size
         if (!file.type.startsWith('image/')) {
-          return reject(new Error(`"${file.name}" is not a valid image. Please upload a PNG, JPG, or similar file.`));
+          return reject(new Error(`"${file.name}" is not a valid image.`));
         }
-        if (file.size > 15 * 1024 * 1024) { // 15 MB limit
+        if (file.size > 15 * 1024 * 1024) {
           return reject(new Error(`"${file.name}" is too large (over 15MB).`));
         }
 
         const reader = new FileReader();
-
-        // Validation Stage 2: File Reading
         reader.onload = () => {
           const result = reader.result;
           if (typeof result === 'string') {
             const parts = result.split(',');
-            if (parts.length !== 2 || !parts[1]) {
-              return reject(new Error(`Could not read "${file.name}". The file may be corrupt.`));
-            }
-            const base64String = parts[1];
+            if (parts.length !== 2 || !parts[1]) return reject(new Error(`Could not read "${file.name}".`));
             resolve({
               id: `asset-${Date.now()}-${Math.random()}`,
               type: 'image',
               originalFile: { name: file.name, type: file.type },
-              originalB64: base64String,
+              originalB64: parts[1],
             });
           } else {
-            reject(new Error(`Failed to read "${file.name}" as a data URL.`));
+            reject(new Error(`Failed to read "${file.name}".`));
           }
         };
-
-        reader.onerror = () => {
-          console.error('FileReader Error:', reader.error);
-          reject(new Error(`Error reading "${file.name}". The file may be corrupt or unsupported.`));
-        };
-        
-        reader.onabort = () => reject(new Error(`Upload of "${file.name}" was cancelled.`));
-
+        reader.onerror = () => reject(new Error(`Error reading "${file.name}".`));
         reader.readAsDataURL(file);
       })
     );
@@ -217,17 +208,15 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       .then(newAssets => {
         setEditorState(prev => ({
           ...prev,
-          uploadedAssets: newAssets, // Replace previous uploads to start the workflow fresh
+          uploadedAssets: newAssets,
           currentStep: 'flatlay'
         }));
       })
       .catch(err => {
         console.error("File upload failed:", err);
-        setError(err.message || "An unknown error occurred during file upload.");
+        setError(err.message);
       })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .finally(() => setIsLoading(false));
   };
 
   const handleGenerateFlatLays = async () => {
@@ -236,22 +225,106 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         return;
     }
     setIsLoading(true);
-    setLoadingMessage("Generating 4K flat lay options...");
     setError(null);
-    setIsSidebarOpen(false); // Close sidebar to show loading/results
+    setIsSidebarOpen(false);
+
+    const primaryAsset = editorState.uploadedAssets[0];
+    const { originalB64 } = primaryAsset;
+    const mimeType = primaryAsset.originalFile.type;
+    const mode = editorState.generationMode;
+
+    const newGeneratedAssets: Asset[] = [];
+
     try {
-        const primaryAsset = editorState.uploadedAssets[0];
-        const results = await generateFlatLayOptions(primaryAsset.originalB64, primaryAsset.originalFile.type);
-        const flatLayAssets: Asset[] = results.map(res => ({
-            id: `asset-${Date.now()}-${Math.random()}`,
-            type: 'image',
-            originalFile: { name: 'flatlay.png', type: res.mimeType },
-            originalB64: res.base64,
+        // Helper functions to generate sets
+        const generateStrictSet = async (suffix = '') => {
+            // Strict Flat Lay
+             try {
+                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
+                 newGeneratedAssets.push({
+                    id: `asset-strict-flat-${Date.now()}${suffix}`,
+                    type: 'image',
+                    label: `Strict Mode: Flat Lay${suffix}`,
+                    originalFile: { name: `strict-flatlay${suffix}.png`, type: res1.mimeType },
+                    originalB64: res1.base64,
+                 });
+             } catch (e) { console.warn("Strict flat lay failed", e); }
+             
+             // Strict 3D Mockup
+             try {
+                 const res2 = await service.generateStrict3DMockup(originalB64, mimeType, mode);
+                 newGeneratedAssets.push({
+                    id: `asset-strict-3d-${Date.now()}${suffix}`,
+                    type: 'image',
+                    label: `Strict Mode: 3D Mockup${suffix}`,
+                    originalFile: { name: `strict-3d-mockup${suffix}.png`, type: res2.mimeType },
+                    originalB64: res2.base64,
+                 });
+             } catch (e) { console.warn("Strict 3D mockup failed", e); }
+        };
+
+        const generateFlexibleSet = async (suffix = '') => {
+            // Flexible Studio Photo
+             try {
+                const res3 = await service.generateFlexibleStudioPhoto(originalB64, mimeType, mode);
+                newGeneratedAssets.push({
+                   id: `asset-flex-photo-${Date.now()}${suffix}`,
+                   type: 'image',
+                   label: `Flexible Mode: Studio Photo${suffix}`,
+                   originalFile: { name: `flexible-studio${suffix}.png`, type: res3.mimeType },
+                   originalB64: res3.base64,
+                });
+             } catch (e) { console.warn("Flexible studio photo failed", e); }
+
+             // Flexible Video
+             try {
+                 if (!suffix) setLoadingMessage("Generating Flexible 3D Video...");
+                 const videoAsset = await handleVeoOperation(service.generateFlexibleVideo(originalB64, mimeType, mode));
+                 videoAsset.label = `Flexible Mode: 3D Video${suffix}`;
+                 newGeneratedAssets.push(videoAsset);
+             } catch (e: any) { 
+                 console.warn("Flexible video failed", e);
+                 if (e.message?.includes("Requested entity was not found")) {
+                    throw new Error("Your API Key is invalid or expired. Please select a valid key.");
+                 }
+             }
+        };
+
+        if (mode === 'strict') {
+            setLoadingMessage(`Generating Strict Mode outputs (Batch 1)...`);
+            await generateStrictSet();
+            setLoadingMessage(`Generating Strict Mode outputs (Batch 2)...`);
+            await generateStrictSet(' (2)');
+        } else if (mode === 'flexible') {
+             setLoadingMessage(`Generating Flexible Mode outputs (Batch 1)...`);
+             await generateFlexibleSet();
+             setLoadingMessage(`Generating Flexible Mode outputs (Batch 2)...`);
+             await generateFlexibleSet(' (2)');
+        } else {
+             // Default or Mixed modes: Generate 1 full set (4 items)
+             setLoadingMessage(`Generating Strict outputs...`);
+             await generateStrictSet();
+             setLoadingMessage(`Generating Flexible outputs...`);
+             await generateFlexibleSet();
+        }
+
+        if (newGeneratedAssets.length === 0) {
+            throw new Error("Generation failed to produce any outputs. Please try again.");
+        }
+
+        setEditorState(prev => ({
+            ...prev,
+            generatedFlatLays: newGeneratedAssets,
+            // Auto-select the first image for editing
+            selectedFlatLay: newGeneratedAssets.find(a => a.type === 'image') || null
         }));
-        setEditorState(prev => ({...prev, generatedFlatLays: flatLayAssets}));
+
     } catch (err: any) {
         console.error(err);
-        setError(`Failed to generate flat lays: ${err.message}`);
+        setError(`Generation failed: ${err.message || "Unknown error"}`);
+        if (err.message?.includes("API Key")) {
+             resetApiKeyStatus();
+        }
     } finally {
         setIsLoading(false);
     }
@@ -259,33 +332,108 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
   const handleSelectFlatLay = (asset: Asset) => {
     setEditorState(prev => ({...prev, selectedFlatLay: asset, currentStep: 'animate'}));
-    // If on mobile, maybe open the sidebar to prompt next step?
-    // Or let user click "Menu" again. Keeping it closed is safer for viewing.
+  };
+
+  const handleApplyEdit = async (modifiedBase64: string, prompt: string) => {
+      setIsEditorModalOpen(false);
+      setIsLoading(true);
+      setLoadingMessage("Applying your edits...");
+      
+      try {
+          const result = await service.editImage(modifiedBase64, 'image/png', prompt);
+          
+          const newAsset: Asset = {
+              id: `asset-${Date.now()}`,
+              type: 'image',
+              label: 'Edited Asset',
+              originalFile: { name: 'edited-flatlay.png', type: result.mimeType },
+              originalB64: result.base64,
+          };
+
+          setEditorState(prev => ({
+              ...prev,
+              generatedFlatLays: [newAsset, ...prev.generatedFlatLays],
+              selectedFlatLay: newAsset
+          }));
+          setToastMessage("Edit applied successfully!");
+      } catch (err: any) {
+          setError("Failed to apply edit: " + err.message);
+      } finally {
+          setIsLoading(false);
+      }
   };
   
   const handleAnimate = async () => {
     if (!editorState.selectedFlatLay) return;
     const { originalB64, originalFile } = editorState.selectedFlatLay;
-    const { preset, aspectRatio, customPrompt } = editorState.animationConfig;
+    const { preset, aspectRatio, customPrompt, generateStatic, generateVideo } = editorState.animationConfig;
 
-    let prompt = "Animate this garment with realistic fabric physics, as if worn by an invisible, well-built male model with a manly chest, against a neutral background. The animation should be photorealistic. ";
-    
-    if (customPrompt) {
-      prompt += `The animation should show the garment ${customPrompt}.`
-    } else if (preset) {
-        const presetPrompts: Record<AnimationPreset, string> = {
-            '360 Spin': 'rotating slowly 360 degrees.',
-            'Walking': 'in a natural walking motion, showcasing how it moves with the body.',
-            'Windy': 'with a strong wind effect from the front, making the fabric ripple and flow.',
-            'Jumping Jacks': 'moving as if the person is doing jumping jacks, showing flexibility.',
-            'Arm Flex': 'moving in a bicep flexing motion.',
-            'Sleeve in Pocket': 'as one of the sleeves moves to place a hand in its own pocket.'
-        };
-        prompt += presetPrompts[preset];
+    setIsLoading(true);
+    setError(null);
+    setIsSidebarOpen(false);
+
+    try {
+        const tasks = [];
+        
+        if (generateStatic) {
+            tasks.push((async () => {
+                setLoadingMessage("Generating 3D Static Mockup...");
+                const res = await service.generateStaticMockup(originalB64, originalFile.type);
+                const staticAsset: Asset = {
+                    id: `asset-static-${Date.now()}`,
+                    type: 'image',
+                    label: 'Static Mockup',
+                    originalFile: { name: '3d-mockup.png', type: res.mimeType },
+                    originalB64: res.base64,
+                };
+                setEditorState(prev => ({ ...prev, staticMockup: staticAsset }));
+            })());
+        }
+
+        if (generateVideo) {
+            tasks.push((async () => {
+                let prompt = "A short hyper realistic 3D mock up video of this clothing item. ";
+                prompt += "Mannequin Requirements: Use INVISIBLE GHOST MANNEQUIN. The clothing must look like it is floating in mid-air. Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible. Show the inside of the collar if applicable. The body shape implied by the drape must be male (broad shoulders, squared torso). ";
+                prompt += "Video Requirements: Clean professional studio lighting, minimal seamless background. 4K visual detail. The clothing must move naturally. ";
+                
+                if (customPrompt) {
+                  prompt += `The animation should show the garment ${customPrompt}.`
+                } else if (preset) {
+                    const presetPrompts: Record<AnimationPreset, string> = {
+                        '360 Spin': 'rotating slowly 360 degrees. Use smooth camera motion.',
+                        'Walking': 'in a natural walking motion, showcasing how it moves with the body.',
+                        'Windy': 'with a strong wind effect from the front, making the fabric ripple and flow.',
+                        'Jumping Jacks': 'moving as if the person is doing jumping jacks, showing flexibility.',
+                        'Arm Flex': 'moving in a bicep flexing motion.',
+                        'Sleeve in Pocket': 'as one of the sleeves moves to place a hand in its own pocket.'
+                    };
+                    prompt += presetPrompts[preset];
+                }
+                
+                const videoAsset = await handleVeoOperation(service.generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
+                videoAsset.label = 'Animated Video';
+                setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
+            })());
+        }
+
+        await Promise.all(tasks);
+        
+        if (generateVideo) {
+            setEditorState(prev => ({ ...prev, currentStep: 'scene' }));
+        }
+
+    } catch (err: any) {
+      console.error(err);
+      let errorMessage = "An unknown error occurred.";
+      if (err.message) errorMessage = err.message;
+      if (err.message?.includes("Requested entity was not found")) {
+        errorMessage = "Your API Key is invalid or expired. Please select a valid key.";
+        resetApiKeyStatus();
+      }
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setLoadingMessage("Creating your animation...");
-    await handleVeoOperation(generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
   };
 
   const handleGenerateScene = async (scenePrompt: string) => {
@@ -295,7 +443,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
     let animationDescription = "";
     if (customPrompt) {
-        animationDescription = `doing the following action: ${customPrompt}.`;
+        animationDescription = `doing the following action: ${customPrompt}`;
     } else if (preset) {
         const presetPrompts: Record<AnimationPreset, string> = {
             '360 Spin': 'rotating slowly 360 degrees',
@@ -308,14 +456,30 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         animationDescription = presetPrompts[preset];
     }
     
-    const prompt = `A photorealistic video of this clothing item being worn by an invisible, well-built male model with a manly chest, ${animationDescription}. The scene is: ${scenePrompt}.`;
+    const prompt = `A short hyper realistic 3D mock up video of this clothing item. 
+    Mannequin Requirements: Use INVISIBLE GHOST MANNEQUIN. The clothing must look like it is floating in mid-air. Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible. Show the inside of the collar if applicable. The body shape implied by the drape must be male (broad shoulders, squared torso).
+    Action: The clothing must move naturally ${animationDescription}.
+    Scene Requirements: The scene is: ${scenePrompt}. Always center the product and keep it clearly readable.`;
 
+    setIsLoading(true);
     setLoadingMessage("Placing your animation in a new scene...");
-    await handleVeoOperation(generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
+    try {
+        const videoAsset = await handleVeoOperation(service.generateVideoFromImage(originalB64, originalFile.type, prompt, aspectRatio));
+        videoAsset.label = 'Scene Animation';
+        setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
+    } catch (e: any) {
+        setError(e.message || "Failed to generate scene.");
+    } finally {
+        setIsLoading(false);
+    }
   };
   
   const handleUpdateAnimationConfig = (config: Partial<AnimationConfig>) => {
     setEditorState(prev => ({...prev, animationConfig: { ...prev.animationConfig, ...config }}));
+  };
+
+  const handleModeChange = (mode: GenerationMode) => {
+      setEditorState(prev => ({ ...prev, generationMode: mode }));
   };
 
   const handleSaveProject = async (projectName: string) => {
@@ -358,12 +522,30 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     }
   };
 
+  const downloadFlatLays = () => {
+    editorState.generatedFlatLays.forEach((asset, index) => {
+        setTimeout(() => downloadAsset(asset), index * 500);
+    });
+  };
+  
+  const downloadResults = () => {
+      if (editorState.staticMockup) downloadAsset(editorState.staticMockup);
+      if (editorState.animatedMockup) {
+          setTimeout(() => downloadAsset(editorState.animatedMockup!), 500);
+      }
+  };
+
   const getCanvasAssets = () => {
     switch(editorState.currentStep) {
         case 'upload': return editorState.uploadedAssets;
         case 'flatlay': return editorState.generatedFlatLays.length > 0 ? editorState.generatedFlatLays : editorState.uploadedAssets;
-        case 'animate': return editorState.selectedFlatLay ? [editorState.selectedFlatLay] : [];
-        case 'scene': return editorState.animatedMockup ? [editorState.animatedMockup] : (editorState.selectedFlatLay ? [editorState.selectedFlatLay] : []);
+        case 'animate': 
+        case 'scene':
+             const results = [];
+             if (editorState.staticMockup) results.push(editorState.staticMockup);
+             if (editorState.animatedMockup) results.push(editorState.animatedMockup);
+             if (results.length > 0) return results;
+             return editorState.selectedFlatLay ? [editorState.selectedFlatLay] : [];
         default: return [];
     }
   };
@@ -373,9 +555,24 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       {(isLoading || isSaving) && <Loader message={isSaving ? 'Saving project...' : loadingMessage} />}
       {isProjectsModalOpen && <ProjectsModal projects={projects} onLoad={handleLoadProject} onDelete={handleDeleteProject} onClose={() => setIsProjectsModalOpen(false)} />}
       {isSaveModalOpen && <SaveProjectModal projectName={currentProject?.name || ''} onSave={handleSaveProject} onClose={() => setIsSaveModalOpen(false)} />}
+      {isEditorModalOpen && editorState.selectedFlatLay && (
+          <ImageEditorModal 
+            imageUrl={`data:${editorState.selectedFlatLay.originalFile.type};base64,${editorState.selectedFlatLay.originalB64}`} 
+            onSave={handleApplyEdit}
+            onClose={() => setIsEditorModalOpen(false)} 
+          />
+      )}
+      
+      {previewAsset && (
+        <MediaPreviewModal 
+            asset={previewAsset} 
+            onClose={() => setPreviewAsset(null)} 
+            onDownload={downloadAsset}
+        />
+      )}
+      
       <Toast message={toastMessage} />
 
-      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-20 md:hidden"
@@ -383,9 +580,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         />
       )}
 
-      {/* Workflow Panel - Drawer on mobile, Sidebar on desktop */}
       <div className={`
-        fixed inset-y-0 left-0 z-30 w-full md:w-auto md:static md:inset-auto 
+        fixed inset-y-0 left-0 z-30 w-full md:w-96 md:static md:inset-auto 
         transform transition-transform duration-300 ease-in-out
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
@@ -398,6 +594,10 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             onUpdateAnimationConfig={handleUpdateAnimationConfig}
             isLoading={isLoading}
             onClose={() => setIsSidebarOpen(false)}
+            onDownloadAllFlatLays={downloadFlatLays}
+            onEditFlatLay={() => setIsEditorModalOpen(true)}
+            onDownloadAssets={downloadResults}
+            onModeChange={handleModeChange}
         />
       </div>
       
@@ -464,6 +664,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 step={editorState.currentStep}
                 selectedAssetId={editorState.selectedFlatLay?.id}
                 onAssetClick={editorState.currentStep === 'flatlay' ? handleSelectFlatLay : undefined}
+                onPreview={handlePreviewAsset}
+                onDownload={downloadAsset}
             />
         </div>
       </main>
