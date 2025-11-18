@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Virtual Threads AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                light: '#3399d1',
+                DEFAULT: '#0080C6',
+                hover: '#0073b0',
+              },
+              surface: {
+                dark: '#030712',      // Near black
+                DEFAULT: '#111827',    // Gray 900
+                light: '#1f2937',     // Gray 800
+                lighter: '#374151',   // Gray 700
+                lightest: '#4b5563'   // Gray 600
+              },
+              text: {
+                DEFAULT: '#F9FAFB',
+                subtle: '#9CA3AF',
+              },
+              brand: {
+                green: {
+                  light: '#34D399',
+                  DEFAULT: '#10B981',
+                  dark: '#059669',
+                },
+                red: {
+                  DEFAULT: '#EF4444',
+                  hover: '#DC2626'
+                }
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
+          "react/": "https://aistudiocdn.com/react@^19.2.0/",
+          "react": "https://aistudiocdn.com/react@^19.2.0",
+          "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-surface-DEFAULT text-text">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
