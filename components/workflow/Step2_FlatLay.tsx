@@ -23,7 +23,7 @@ const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, onNe
         disabled={isLoading || !hasUploadedAssets}
         className="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-lightest disabled:cursor-not-allowed transition-colors"
       >
-        {isLoading ? 'Generating...' : (hasGeneratedLays ? 'Regenerate Flat Lays' : 'Generate Flat Lays')}
+        {isLoading ? 'Generating...' : (hasGeneratedLays ? 'Regenerate Assets' : 'Generate Assets')}
       </button>
 
       {hasGeneratedLays && (
@@ -37,7 +37,7 @@ const Step2FlatLay: React.FC<Props> = ({ onGenerate, onEdit, onDownloadAll, onNe
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
-                Download All 4 Options
+                Download All Options
            </button>
            
            {/* Edit Button - Only visible if exactly 1 item is selected */}

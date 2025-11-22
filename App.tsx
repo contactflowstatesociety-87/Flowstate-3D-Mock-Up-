@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import HomePage from './pages/HomePage';
 import EditorPage from './pages/EditorPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ApiKeyModal from './components/ApiKeyModal';
+import Loader from './components/Loader';
 import * as authService from './services/authService';
 import type { User } from './types';
 
@@ -14,7 +16,6 @@ if (typeof (window as any).aistudio === 'undefined') {
     hasSelectedApiKey: () => new Promise(resolve => resolve(true)),
     openSelectKey: () => new Promise<void>(resolve => resolve()),
     getHostUrl: () => Promise.resolve(''),
-    // FIX: Added missing properties to the mocked return value of getModelQuota to match the ModelQuota type.
     getModelQuota: () => Promise.resolve({
       canCreate: true,
       canUse: true,
@@ -31,12 +32,23 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isApiKeySelected, setIsApiKeySelected] = useState<boolean>(false);
   const [isCheckingApiKey, setIsCheckingApiKey] = useState<boolean>(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
 
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    }
+    const initAuth = async () => {
+        setIsCheckingAuth(true);
+        try {
+            const user = await authService.getCurrentUser();
+            if (user) {
+                setCurrentUser(user);
+            }
+        } catch (e) {
+            console.error("Auth check failed", e);
+        } finally {
+            setIsCheckingAuth(false);
+        }
+    };
+    initAuth();
   }, []);
 
   const checkApiKey = useCallback(async () => {
@@ -85,6 +97,10 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
+    if (isCheckingAuth) {
+        return <Loader message="Restoring session..." />;
+    }
+
     switch (view) {
       case 'login':
         return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={() => setView('register')} />;
@@ -92,6 +108,7 @@ const App: React.FC = () => {
         return <RegisterPage onRegisterSuccess={handleLoginSuccess} onNavigate={() => setView('login')} />;
       case 'editor':
         if (!currentUser) {
+            // Fix: don't return null here to avoid flickering, just redirect or show login
             setView('login');
             return null;
         }
@@ -102,14 +119,19 @@ const App: React.FC = () => {
         />;
       case 'home':
       default:
-        return <HomePage onGetStarted={() => handleNavigation('editor')} onNavigate={handleNavigation} user={currentUser} />;
+        // If user is already logged in, the "Get Started" button on Home should go straight to editor
+        return <HomePage 
+            onGetStarted={() => handleNavigation('editor')} 
+            onNavigate={handleNavigation} 
+            user={currentUser} 
+        />;
     }
   };
 
   return (
     <div className="bg-surface-DEFAULT min-h-screen font-sans">
       {renderContent()}
-      {!isApiKeySelected && view === 'editor' && !isCheckingApiKey && (
+      {!isApiKeySelected && view === 'editor' && !isCheckingApiKey && !isCheckingAuth && (
         <ApiKeyModal onSelectKey={handleSelectKey} />
       )}
     </div>

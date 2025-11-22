@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality } from "@google/genai";
-import type { Operation, GenerateVideosResponse } from "@google/genai";
+import type { Operation, GenerateVideosResponse, GenerateContentResponse } from "@google/genai";
 import type { GenerationResult, GenerationMode } from '../types';
 
 // This function will be called before every API call to ensure the latest key is used.
@@ -37,7 +37,7 @@ const withRetry = async <T>(
 };
 
 const modeHeaderMap: Record<string, string> = {
-  default: "Mode Default4X. Use the full Flowstate Society 4X Generation Engine that produces 2 strict outputs and 2 flexible outputs.",
+  default: "Mode Default5X. Use the full Flowstate Society 5X Generation Engine. You must generate one of each style (Strict, Flexible, Ecommerce, Luxury, Complex) to provide a full range of options.",
   strict: "Mode Strict. Activate Strict Only Mode. Generate only strict outputs with locked lighting, locked camera, and zero creative variation.",
   flexible: "Mode Flexible. Activate Flexible Only Mode. Generate only flexible premium creative outputs while keeping product details accurate.",
   ecommerce: "Mode Ecommerce. Activate Ecommerce Optimized Mode for clean white or light gray backgrounds and marketplace ready outputs.",
@@ -59,11 +59,12 @@ const transformImage = async (base64Images: string | string[], mimeType: string,
     
     const parts = [];
     for (const b64 of images) {
+        if (!b64) continue; // Skip empty strings
         parts.push({ inlineData: { data: b64, mimeType: mimeType } });
     }
     parts.push({ text: prompt });
 
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry<GenerateContentResponse>(() => ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
             parts: parts,
@@ -106,21 +107,22 @@ export const editImage = async (base64Image: string, mimeType: string, userPromp
 
 export const generateStaticMockup = async (base64Image: string, mimeType: string): Promise<GenerationResult> => {
      // Kept for backward compatibility
-    const prompt = "A hyper-realistic 3D studio photography mock up of this clothing item. Use INVISIBLE GHOST MANNEQUIN. The clothing must look like it is floating in mid-air. Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible. High detail.";
+    const prompt = "A hyper-realistic 3D studio photography mock up of this product. CATEGORY DETECTION: If Clothing -> Use INVISIBLE GHOST MANNEQUIN (Hollow form, floating, no visible body). If Accessory (Watch, Bag, Shoe) -> Show as floating 3D object (No mannequin). High detail.";
     return transformImage(base64Image, mimeType, prompt);
 };
 
-// --- 4X GENERATION ENGINE FUNCTIONS ---
+// --- 4X GENERATION ENGINE FUNCTIONS (UPDATED FOR 5X DEFAULT) ---
 
 export const generateStrictFlatLay = async (base64Image: string, mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
     const header = getModeHeader(mode);
     const prompt = `${header}
 
 PHASE 1 & 2: STRICT MODE FLAT LAY
-Generate a 4K studio flat lay of this product.
+Generate an ULTRA-HIGH RESOLUTION 8K studio flat lay of this product.
 Rules:
 - Extract Product Truth File from image.
 - Preserve exact silhouette, logo placement, stitching, and fabric texture.
+- CRITICAL: EXACT COPY REQUIRED. DO NOT CHANGE LOGO, TEXT, OR COLORS.
 - Use clean light gray to white gradient studio background.
 - Soft, balanced, diffused lighting.
 - No creative angles. Straight down.
@@ -134,14 +136,26 @@ export const generateStrict3DMockup = async (base64Images: string | string[], mi
     const prompt = `${header}
 
 PHASE 2: STRICT MODE 3D MOCKUP
-Generate a 4K 3D studio mockup photo.
-Rules:
-- Use INVISIBLE GHOST MANNEQUIN.
-- The clothing must look like it is floating in mid-air.
-- Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible.
-- Show the inside of the collar/neck area if applicable.
-- Clothing must hang naturally with realistic physics (as if on a broad-shouldered male form, but the form is absent).
-- Preserve all original product details (logos, colors, seams).
+Generate an ULTRA-HIGH RESOLUTION 8K 3D studio mockup photo.
+
+CATEGORY ANALYSIS & RULES:
+1. IF CLOTHING (Jacket, Hoodie, Shirt, Pants):
+   - Use INVISIBLE GHOST MANNEQUIN.
+   - The clothing must look like it is floating in mid-air.
+   - Hollow clothing form. NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN. NO BODY PARTS VISIBLE.
+   - Show the inside of the collar/neck area if applicable.
+   - Clothing must hang naturally with realistic physics.
+
+2. IF ACCESSORY / HARD GOODS (Watch, Bag, Shoe, Hat, Bottle):
+   - Display as a floating 3D product object.
+   - CRITICAL: PRESERVE EXACT DIAL DETAILS, MARKERS, HANDS, AND BRANDING.
+   - DO NOT REBRAND. DO NOT ALTER COLORS.
+   - DO NOT use a mannequin. DO NOT morph into clothing.
+   - Maintain rigid or semi-rigid structure appropriate for the material.
+   - Center in frame, floating in mid-air.
+
+UNIVERSAL RULES:
+- Preserve all original product details (logos, colors, seams). DO NOT COMPROMISE LOGOS.
 - Lighting: Soft diffused studio light, no harsh contrast.
 - Background: Clean studio gray/white.
 - Camera: Centered, 50-85mm lens equivalent.`;
@@ -153,14 +167,19 @@ export const generateFlexibleStudioPhoto = async (base64Images: string | string[
     const prompt = `${header}
 
 PHASE 3: FLEXIBLE MODE STUDIO PHOTO
-Generate a Premium Enhanced 4K Studio Photo.
+Generate a Premium Enhanced 8K Studio Photo.
+
+CATEGORY ANALYSIS:
+- IF CLOTHING: Use INVISIBLE GHOST MANNEQUIN. Floating in mid-air. Hollow form. NO CLEAR OR GLASS MANNEQUIN.
+- IF ACCESSORY/WATCH/BAG: Display as floating 3D product. DO NOT morph into clothing.
+  - CRITICAL: EXACT REPLICA OF DIAL, LOGO, AND TEXTURE REQUIRED.
+
 Rules:
-- Use INVISIBLE GHOST MANNEQUIN. Floating in mid-air. Hollow form.
-- Maintain product accuracy (colors, logos, details).
+- Maintain product accuracy (colors, logos, details). DO NOT COMPROMISE LOGOS.
 - Allow creative lighting (rim lights, gradients, dramatic shadows).
 - Allow creative background (dark, textured, or soft commercial backdrop).
 - Camera angle can be slightly more dynamic.
-- Enhance fabric microtexture and realism.
+- Enhance fabric/material microtexture and realism.
 - Look like a high-end commercial campaign.`;
     return transformImage(base64Images, mimeType, prompt);
 };
@@ -171,52 +190,75 @@ export const generateFlexibleVideo = async (base64Image: string, mimeType: strin
 
 PHASE 3: FLEXIBLE MODE 3D ANIMATED VIDEO
 Generate a 4K 3D animated mockup video.
-Rules:
-- Use INVISIBLE GHOST MANNEQUIN.
-- The clothing must look like it is floating in mid-air.
-- Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible.
-- Cloth must move naturally with realistic physics (broad shoulders, squared torso implied by drape).
-- Maintain 100% product design accuracy.
-- Motion: Smooth cinematic camera motion (slow orbit or push in).
-- Micro-motions: Gentle breeze or breathing effect.
-- Lighting: Premium cinematic studio lighting.
-- Output must be hyper-realistic 4K quality.`;
+
+CATEGORY ANALYSIS & RULES (CRITICAL):
+1. IF CLOTHING (Jacket, Shirt, Hoodie):
+   - Use INVISIBLE GHOST MANNEQUIN.
+   - Hollow clothing form. NO VISIBLE MANNEQUIN. NO BODY PARTS.
+   - Show inside of collar.
+   - Fabric moves with gentle breeze or breathing motion.
+
+2. IF ACCESSORY (Watch, Bag, Shoe):
+   - Display as a 3D object floating in mid-air.
+   - CRITICAL: EXACT COPY OF ORIGINAL PRODUCT. DO NOT CHANGE LOGO.
+   - PRESERVE WATCH FACES, DIALS, AND TEXT EXACTLY.
+   - DO NOT morph into clothing.
+   - DO NOT use a mannequin.
+   - Rigid/Semi-rigid motion (slow float, rotation).
+
+UNIVERSAL RULES:
+- SILENT VIDEO. NO AUDIO TRACK.
+- Maintain 100% product design accuracy. DO NOT COMPROMISE LOGOS.
+- Clean professional studio lighting.
+- Smooth camera motion (slow orbit or gentle push in).
+- Output must be professional, hyper realistic, ecommerce grade.`;
 
     const ai = getAiClient();
-    return withRetry(() => ai.models.generateVideos({
+    
+    return ai.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
-        prompt,
         image: {
             imageBytes: base64Image,
             mimeType: mimeType,
         },
+        prompt: prompt,
         config: {
-            numberOfVideos: 1,
-            resolution: '720p',
-            aspectRatio: '9:16',
+             numberOfVideos: 1,
+             resolution: '1080p', // Enforce 1080p or higher
+             aspectRatio: '9:16'
         }
-    }));
+    });
 };
-
 
 export const generateVideoFromImage = async (base64Image: string, mimeType: string, prompt: string, aspectRatio: '16:9' | '9:16'): Promise<Operation<GenerateVideosResponse>> => {
     const ai = getAiClient();
-    return withRetry(() => ai.models.generateVideos({
+    
+    // Append safety checks to user/system prompt
+    const safePrompt = `${prompt} 
+    CRITICAL: 
+    1. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
+    2. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
+    3. SILENT VIDEO. NO AUDIO TRACK.`;
+
+    // Ensure resolution is high
+    const config = {
+        numberOfVideos: 1,
+        resolution: '1080p', // Enforce 1080p
+        aspectRatio: aspectRatio
+    };
+
+    return ai.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
-        prompt,
         image: {
             imageBytes: base64Image,
             mimeType: mimeType,
         },
-        config: {
-            numberOfVideos: 1,
-            resolution: '720p',
-            aspectRatio,
-        }
-    }));
+        prompt: safePrompt,
+        config: config
+    });
 };
 
 export const checkVideoOperationStatus = async (operation: Operation<GenerateVideosResponse>): Promise<Operation<GenerateVideosResponse>> => {
     const ai = getAiClient();
-    return withRetry(() => ai.operations.getVideosOperation({ operation: operation }));
+    return ai.operations.getVideosOperation({ operation });
 };

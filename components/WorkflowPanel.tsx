@@ -48,7 +48,7 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
   
     return (
     <aside className="w-full md:w-96 bg-surface-light flex flex-col h-full border-r border-surface-lighter">
-      <div className="p-4 border-b border-surface-lighter flex justify-between items-start">
+      <div className="p-4 border-b border-surface-lighter flex justify-between items-start z-10 relative">
         <div>
             <h2 className="text-2xl font-bold">Creative Workflow</h2>
             <p className="text-text-subtle text-sm">Follow the steps to bring your design to life.</p>
@@ -66,16 +66,18 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
         )}
       </div>
       
-      <div className="flex-grow overflow-y-auto p-4 space-y-2">
-        
-        {/* Mode Selector at the top of the controls */}
+      {/* Mode Selector - Placed outside scroll area to allow tooltips to overlay header */}
+      <div className="px-4 pt-4 z-20 relative">
         <ModeSelector selectedMode={generationMode} onChangeMode={onModeChange} />
-
+      </div>
+      
+      <div className="flex-grow overflow-y-auto px-4 pb-4 space-y-2">
+        
         <WorkflowStep number={1} title="Upload Images" isActive={currentStep === 'upload'} isComplete={uploadedAssets.length > 0}>
           <Step1Upload onFilesUploaded={onFilesUploaded} isLoading={isLoading} />
         </WorkflowStep>
         
-        <WorkflowStep number={2} title="4X Generation" isActive={currentStep === 'flatlay'} isComplete={generatedFlatLays.length > 0}>
+        <WorkflowStep number={2} title="Generate" isActive={currentStep === 'flatlay'} isComplete={generatedFlatLays.length > 0}>
           <Step2FlatLay 
             onGenerate={onGenerateFlatLays} 
             onEdit={onEditFlatLay || (() => {})} 

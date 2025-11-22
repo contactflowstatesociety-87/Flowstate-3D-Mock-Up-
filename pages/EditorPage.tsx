@@ -28,7 +28,7 @@ const INITIAL_EDITOR_STATE: EditorState = {
   generationMode: 'default',
   uploadedAssets: [],
   generatedFlatLays: [],
-  selectedFlatLays: [], // Changed to array
+  selectedFlatLays: [], 
   staticMockup: null,
   animatedMockup: null,
   animationConfig: {
@@ -49,6 +49,64 @@ const Tooltip: React.FC<{ text: string; children: React.ReactNode; }> = ({ text,
         </div>
     </div>
 );
+
+// Helper to normalize images to ensure API compatibility
+const normalizeImage = (file: File): Promise<{ base64: string; mimeType: string }> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      
+      // Safe max dimension for API inputs while maintaining high quality
+      const MAX_DIM = 3072; 
+      let width = img.width;
+      let height = img.height;
+
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+        width *= ratio;
+        height *= ratio;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+          reject(new Error("Canvas context failed"));
+          return;
+      }
+      
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Preserve PNG transparency if applicable, otherwise use JPEG for better compression
+      const outputMimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      const quality = outputMimeType === 'image/jpeg' ? 0.95 : undefined;
+
+      try {
+          const dataUrl = canvas.toDataURL(outputMimeType, quality);
+          const base64 = dataUrl.split(',')[1];
+          if (!base64) throw new Error("Encoding failed");
+          
+          resolve({
+            base64: base64,
+            mimeType: outputMimeType
+          });
+      } catch (e) {
+          reject(e);
+      }
+    };
+    
+    img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load image for normalization"));
+    };
+    
+    img.src = url;
+  });
+};
 
 interface EditorPageProps {
   resetApiKeyStatus: () => void;
@@ -120,49 +178,90 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       setPreviewAsset(asset);
   };
 
-  const handleVeoOperation = useCallback(async (operationPromise: Promise<Operation<GenerateVideosResponse>>) => {
+  const checkVideoResolution = (videoUrl: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+            // Check for 1080p (>= 1080 in either dimension)
+            resolve(video.videoWidth >= 1080 || video.videoHeight >= 1080);
+        };
+        video.onerror = () => resolve(false);
+        video.src = videoUrl;
+    });
+  };
+
+  // Modified to accept a generator function for retry capabilities
+  const handleVeoOperation = useCallback(async (videoGenerator: () => Promise<Operation<GenerateVideosResponse>>): Promise<Asset> => {
     let messageTimer: ReturnType<typeof setInterval>;
-    let elapsedTime = 0;
-  
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    const startMessageTimer = () => {
+        let elapsedTime = 0;
+        setLoadingMessage(VEO_GENERATION_MESSAGES[0]);
+        messageTimer = setInterval(() => {
+            elapsedTime += 1000;
+            const sortedTimes = Object.keys(VEO_GENERATION_MESSAGES).map(Number).sort((a, b) => b - a);
+            for (const time of sortedTimes) {
+                if (elapsedTime >= time) {
+                    setLoadingMessage(VEO_GENERATION_MESSAGES[time]);
+                    break;
+                }
+            }
+        }, 1000);
+    };
+
     try {
-      setLoadingMessage(VEO_GENERATION_MESSAGES[0]);
-      messageTimer = setInterval(() => {
-        elapsedTime += 1000;
-        const sortedTimes = Object.keys(VEO_GENERATION_MESSAGES).map(Number).sort((a, b) => b - a);
-        for (const time of sortedTimes) {
-          if (elapsedTime >= time) {
-            setLoadingMessage(VEO_GENERATION_MESSAGES[time]);
-            break;
-          }
+      while (attempts < maxAttempts) {
+        attempts++;
+        if (attempts > 1) {
+            setLoadingMessage(`Retrying generation (Attempt ${attempts}/${maxAttempts}) for 1080p quality...`);
+        } else {
+            startMessageTimer();
         }
-      }, 1000);
-  
-      let operation = await operationPromise;
-      while (!operation.done) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        operation = await service.checkVideoOperationStatus(operation);
+
+        let operation = await videoGenerator();
+        while (!operation.done) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            operation = await service.checkVideoOperationStatus(operation);
+        }
+
+        // @ts-ignore
+        if (messageTimer) clearInterval(messageTimer);
+
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+        if (downloadLink) {
+            const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+            const blob = await videoResponse.blob();
+            const videoUrl = URL.createObjectURL(blob);
+
+            // Resolution QA Check
+            const isHighRes = await checkVideoResolution(videoUrl);
+            if (isHighRes) {
+                return {
+                    id: `asset-${Date.now()}`,
+                    type: 'video',
+                    originalFile: { name: 'animated-mockup.mp4', type: 'video/mp4' },
+                    originalB64: '',
+                    processedUrl: videoUrl,
+                } as Asset;
+            } else {
+                console.warn(`Video verification failed: Resolution < 1080p. Retrying...`);
+                // Continue loop
+            }
+        } else {
+            console.warn("Video generation completed, but no download link provided. Retrying...");
+            // Continue loop
+        }
       }
-  
-      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (downloadLink) {
-        const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-        const blob = await videoResponse.blob();
-        const videoUrl = URL.createObjectURL(blob);
-        return {
-          id: `asset-${Date.now()}`,
-          type: 'video',
-          originalFile: { name: 'animated-mockup.mp4', type: 'video/mp4' },
-          originalB64: '',
-          processedUrl: videoUrl,
-        } as Asset;
-      } else {
-        throw new Error("Video generation completed, but no download link was provided.");
-      }
+      throw new Error("Failed to generate video in 1080p after multiple attempts.");
+
     } catch (err: any) {
         throw err;
     } finally {
       // @ts-ignore
-      clearInterval(messageTimer);
+      if (messageTimer) clearInterval(messageTimer);
     }
   }, []);
 
@@ -174,35 +273,25 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     setError(null);
     setIsSidebarOpen(false);
 
-    const assetPromises = files.map(file =>
-      new Promise<Asset>((resolve, reject) => {
+    const assetPromises = files.map(async (file) => {
         if (!file.type.startsWith('image/')) {
-          return reject(new Error(`"${file.name}" is not a valid image.`));
+          throw new Error(`"${file.name}" is not a valid image.`);
         }
-        if (file.size > 15 * 1024 * 1024) {
-          return reject(new Error(`"${file.name}" is too large (over 15MB).`));
-        }
-
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result;
-          if (typeof result === 'string') {
-            const parts = result.split(',');
-            if (parts.length !== 2 || !parts[1]) return reject(new Error(`Could not read "${file.name}".`));
-            resolve({
+        
+        try {
+            // Normalize the image (resize if needed, standardize mime type)
+            const { base64, mimeType } = await normalizeImage(file);
+            
+            return {
               id: `asset-${Date.now()}-${Math.random()}`,
               type: 'image',
-              originalFile: { name: file.name, type: file.type },
-              originalB64: parts[1],
-            });
-          } else {
-            reject(new Error(`Failed to read "${file.name}".`));
-          }
-        };
-        reader.onerror = () => reject(new Error(`Error reading "${file.name}".`));
-        reader.readAsDataURL(file);
-      })
-    );
+              originalFile: { name: file.name, type: mimeType },
+              originalB64: base64,
+            } as Asset;
+        } catch (err: any) {
+             throw new Error(`Failed to process "${file.name}": ${err.message}`);
+        }
+    });
 
     Promise.all(assetPromises)
       .then(newAssets => {
@@ -236,6 +325,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     const newGeneratedAssets: Asset[] = [];
 
     try {
+        // --- Helper to generate Strict and Flexible sets (Legacy logic kept for fallback) ---
         const generateStrictSet = async (suffix = '') => {
              try {
                  const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
@@ -249,7 +339,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              } catch (e) { console.warn("Strict flat lay failed", e); }
              
              try {
-                 // Pass array for consistency, even if just one image here
                  const res2 = await service.generateStrict3DMockup([originalB64], mimeType, mode);
                  newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}${suffix}`,
@@ -275,7 +364,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
              try {
                  if (!suffix) setLoadingMessage("Generating Flexible 3D Video...");
-                 const videoAsset = await handleVeoOperation(service.generateFlexibleVideo(originalB64, mimeType, mode));
+                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode));
                  videoAsset.label = `Flexible Mode: 3D Video${suffix}`;
                  newGeneratedAssets.push(videoAsset);
              } catch (e: any) { 
@@ -286,7 +375,80 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              }
         };
 
-        if (mode === 'strict') {
+        // --- MAIN GENERATION LOGIC ---
+
+        if (mode === 'default') {
+            // DEFAULT 5X LOGIC: Generate one of each style + video
+            
+            // 1. Strict Flat Lay
+            setLoadingMessage("Generating Strict Flat Lay...");
+            try {
+                const res1 = await service.generateStrictFlatLay(originalB64, mimeType, 'strict');
+                newGeneratedAssets.push({ 
+                    id: `asset-strict-flat-${Date.now()}`, type: 'image', label: 'Strict Mode: Flat Lay',
+                    originalFile: { name: 'strict-flatlay.png', type: res1.mimeType }, originalB64: res1.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 2. Strict 3D Mockup
+            setLoadingMessage("Generating Strict 3D Mockup...");
+            try {
+                const res2 = await service.generateStrict3DMockup([originalB64], mimeType, 'strict');
+                newGeneratedAssets.push({
+                    id: `asset-strict-3d-${Date.now()}`, type: 'image', label: 'Strict Mode: 3D Mockup',
+                    originalFile: { name: 'strict-mockup.png', type: res2.mimeType }, originalB64: res2.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 3. Flexible Studio Photo
+            setLoadingMessage("Generating Flexible Studio Photo...");
+            try {
+                const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, 'flexible');
+                newGeneratedAssets.push({
+                    id: `asset-flex-photo-${Date.now()}`, type: 'image', label: 'Flexible Mode: Studio Photo',
+                    originalFile: { name: 'flexible-photo.png', type: res3.mimeType }, originalB64: res3.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 4. Ecommerce Mockup
+            setLoadingMessage("Generating Ecommerce Mockup...");
+            try {
+                const res4 = await service.generateStrict3DMockup([originalB64], mimeType, 'ecommerce');
+                newGeneratedAssets.push({
+                    id: `asset-ecom-mockup-${Date.now()}`, type: 'image', label: 'Ecommerce Mode: Mockup',
+                    originalFile: { name: 'ecommerce-mockup.png', type: res4.mimeType }, originalB64: res4.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 5. Luxury Photo
+            setLoadingMessage("Generating Luxury Photo...");
+            try {
+                const res5 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, 'luxury');
+                newGeneratedAssets.push({
+                    id: `asset-luxury-photo-${Date.now()}`, type: 'image', label: 'Luxury Mode: Photo',
+                    originalFile: { name: 'luxury-photo.png', type: res5.mimeType }, originalB64: res5.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 6. Complex Material Mockup
+            setLoadingMessage("Generating Complex Material Mockup...");
+            try {
+                const res6 = await service.generateStrict3DMockup([originalB64], mimeType, 'complex');
+                newGeneratedAssets.push({
+                    id: `asset-complex-mockup-${Date.now()}`, type: 'image', label: 'Complex Mode: Mockup',
+                    originalFile: { name: 'complex-mockup.png', type: res6.mimeType }, originalB64: res6.base64
+                });
+            } catch(e) { console.warn(e); }
+
+            // 7. Video
+            setLoadingMessage("Generating Animated Video...");
+            try {
+                const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, 'default'));
+                videoAsset.label = 'Default 5X: Video';
+                newGeneratedAssets.push(videoAsset);
+            } catch (e) { console.warn(e); }
+
+        } else if (mode === 'strict') {
             setLoadingMessage(`Generating Strict Mode outputs (Batch 1)...`);
             await generateStrictSet();
             setLoadingMessage(`Generating Strict Mode outputs (Batch 2)...`);
@@ -297,10 +459,43 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              setLoadingMessage(`Generating Flexible Mode outputs (Batch 2)...`);
              await generateFlexibleSet(' (2)');
         } else {
-             setLoadingMessage(`Generating Strict outputs...`);
-             await generateStrictSet();
-             setLoadingMessage(`Generating Flexible outputs...`);
-             await generateFlexibleSet();
+             // Specific modes (Ecommerce, Luxury, Complex)
+             setLoadingMessage(`Generating ${mode} outputs...`);
+             
+             // Generate 1 Flat Lay
+             try {
+                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
+                 newGeneratedAssets.push({
+                    id: `asset-${mode}-flat-${Date.now()}`, type: 'image', label: `${mode}: Flat Lay`,
+                    originalFile: { name: `${mode}-flat.png`, type: res1.mimeType }, originalB64: res1.base64
+                 });
+             } catch (e) { console.warn(e); }
+
+             // Generate 1 Mockup
+             try {
+                 const res2 = await service.generateStrict3DMockup([originalB64], mimeType, mode);
+                 newGeneratedAssets.push({
+                    id: `asset-${mode}-mockup-${Date.now()}`, type: 'image', label: `${mode}: 3D Mockup`,
+                    originalFile: { name: `${mode}-mockup.png`, type: res2.mimeType }, originalB64: res2.base64
+                 });
+             } catch (e) { console.warn(e); }
+
+             // Generate 1 Studio Photo
+             try {
+                 const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, mode);
+                 newGeneratedAssets.push({
+                    id: `asset-${mode}-photo-${Date.now()}`, type: 'image', label: `${mode}: Studio Photo`,
+                    originalFile: { name: `${mode}-photo.png`, type: res3.mimeType }, originalB64: res3.base64
+                 });
+             } catch (e) { console.warn(e); }
+             
+             // Generate 1 Video
+             setLoadingMessage(`Generating ${mode} Video...`);
+             try {
+                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode));
+                 videoAsset.label = `${mode}: Video`;
+                 newGeneratedAssets.push(videoAsset);
+             } catch (e) { console.warn(e); }
         }
 
         if (newGeneratedAssets.length === 0) {
@@ -310,7 +505,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         setEditorState(prev => ({
             ...prev,
             generatedFlatLays: newGeneratedAssets,
-            selectedFlatLays: [] // Reset selection on new generation
+            selectedFlatLays: [] 
         }));
 
     } catch (err: any) {
@@ -366,7 +561,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
           setEditorState(prev => ({
               ...prev,
               generatedFlatLays: [newAsset, ...prev.generatedFlatLays],
-              selectedFlatLays: [newAsset] // Auto-select the edited version
+              selectedFlatLays: [newAsset]
           }));
           setToastMessage("Edit applied successfully!");
       } catch (err: any) {
@@ -379,9 +574,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   const handleAnimate = async () => {
     if (editorState.selectedFlatLays.length === 0) return;
     
-    // Use all selected flat lays for static generation to allow model to average/improve details
     const selectedAssets = editorState.selectedFlatLays;
-    // Use primary (first) for video as Veo takes single input usually
     const primaryAsset = selectedAssets[0];
     
     const { preset, aspectRatio, customPrompt, generateStatic, generateVideo } = editorState.animationConfig;
@@ -396,8 +589,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         if (generateStatic) {
             tasks.push((async () => {
                 setLoadingMessage("Generating 3D Static Mockup...");
-                // Map assets to base64 strings for the service
                 const base64Images = selectedAssets.map(a => a.originalB64);
+                // Use generationMode from state to pass context
                 const res = await service.generateStrict3DMockup(base64Images, primaryAsset.originalFile.type, editorState.generationMode);
                 const staticAsset: Asset = {
                     id: `asset-static-${Date.now()}`,
@@ -412,25 +605,26 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
         if (generateVideo) {
             tasks.push((async () => {
-                let prompt = "A short hyper realistic 3D mock up video of this clothing item. ";
-                prompt += "Mannequin Requirements: Use INVISIBLE GHOST MANNEQUIN. The clothing must look like it is floating in mid-air. Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible. Show the inside of the collar if applicable. The body shape implied by the drape must be male (broad shoulders, squared torso). ";
-                prompt += "Video Requirements: Clean professional studio lighting, minimal seamless background. 4K visual detail. The clothing must move naturally. ";
+                let prompt = "A short hyper realistic 3D mock up video. ";
+                prompt += "CATEGORY ANALYSIS: IF CLOTHING -> Use INVISIBLE GHOST MANNEQUIN (Hollow form, floating, no visible body, show inside collar). IF ACCESSORY (Watch, Bag, Shoe) -> Display as floating 3D object (No mannequin). DO NOT morph accessories into clothing. ";
+                prompt += "Video Requirements: Clean professional studio lighting, minimal seamless background. 4K visual detail. The product must move naturally. ";
                 
                 if (customPrompt) {
-                  prompt += `The animation should show the garment ${customPrompt}.`
+                  prompt += `The animation should show the product ${customPrompt}.`
                 } else if (preset) {
                     const presetPrompts: Record<AnimationPreset, string> = {
                         '360 Spin': 'rotating slowly 360 degrees. Use smooth camera motion.',
-                        'Walking': 'in a natural walking motion, showcasing how it moves with the body.',
-                        'Windy': 'with a strong wind effect from the front, making the fabric ripple and flow.',
-                        'Jumping Jacks': 'moving as if the person is doing jumping jacks, showing flexibility.',
-                        'Arm Flex': 'moving in a bicep flexing motion.',
-                        'Sleeve in Pocket': 'as one of the sleeves moves to place a hand in its own pocket.'
+                        'Walking': 'in a natural walking motion (if clothing) or dynamic float (if accessory).',
+                        'Windy': 'with a strong wind effect (if fabric) or atmosphere (if rigid).',
+                        'Jumping Jacks': 'moving dynamically (clothing only) or animated burst (accessory).',
+                        'Arm Flex': 'moving in a flexing motion (clothing only) or structural flex (accessory).',
+                        'Sleeve in Pocket': 'moving naturally (clothing only) or detail focus (accessory).'
                     };
                     prompt += presetPrompts[preset];
                 }
                 
-                const videoAsset = await handleVeoOperation(service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
+                // Pass generator function
+                const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
                 videoAsset.label = 'Animated Video';
                 setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
             })());
@@ -468,23 +662,24 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         const presetPrompts: Record<AnimationPreset, string> = {
             '360 Spin': 'rotating slowly 360 degrees',
             'Walking': 'in a natural walking motion',
-            'Windy': 'with a strong wind effect from the front',
+            'Windy': 'with a strong wind effect',
             'Jumping Jacks': 'doing jumping jacks',
-            'Arm Flex': 'flexing its bicep',
-            'Sleeve in Pocket': 'placing a hand in its own pocket'
+            'Arm Flex': 'flexing',
+            'Sleeve in Pocket': 'placing a hand in pocket'
         };
         animationDescription = presetPrompts[preset];
     }
     
-    const prompt = `A short hyper realistic 3D mock up video of this clothing item. 
-    Mannequin Requirements: Use INVISIBLE GHOST MANNEQUIN. The clothing must look like it is floating in mid-air. Hollow clothing form. No visible mannequin. No clear or glass mannequin. No body parts visible. Show the inside of the collar if applicable. The body shape implied by the drape must be male (broad shoulders, squared torso).
-    Action: The clothing must move naturally ${animationDescription}.
+    const prompt = `A short hyper realistic 3D mock up video. 
+    CATEGORY ANALYSIS: IF CLOTHING -> Use INVISIBLE GHOST MANNEQUIN (Hollow form, floating, no visible body). IF ACCESSORY -> Display as floating 3D object (No mannequin).
+    Action: The product must move naturally ${animationDescription}.
     Scene Requirements: The scene is: ${scenePrompt}. Always center the product and keep it clearly readable.`;
 
     setIsLoading(true);
     setLoadingMessage("Placing your animation in a new scene...");
     try {
-        const videoAsset = await handleVeoOperation(service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
+        // Pass generator function
+        const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
         videoAsset.label = 'Scene Animation';
         setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
     } catch (e: any) {
@@ -576,7 +771,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       {isProjectsModalOpen && <ProjectsModal projects={projects} onLoad={handleLoadProject} onDelete={handleDeleteProject} onClose={() => setIsProjectsModalOpen(false)} />}
       {isSaveModalOpen && <SaveProjectModal projectName={currentProject?.name || ''} onSave={handleSaveProject} onClose={() => setIsSaveModalOpen(false)} />}
       
-      {/* Editor Modal - Only if exactly one item is selected */}
       {isEditorModalOpen && editorState.selectedFlatLays.length === 1 && (
           <ImageEditorModal 
             imageUrl={`data:${editorState.selectedFlatLays[0].originalFile.type};base64,${editorState.selectedFlatLays[0].originalB64}`} 
