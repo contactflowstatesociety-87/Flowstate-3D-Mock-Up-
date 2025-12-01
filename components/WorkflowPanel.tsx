@@ -19,22 +19,23 @@ interface WorkflowPanelProps {
   onDownloadAllFlatLays?: () => void;
   onEditFlatLay?: () => void;
   onDownloadAssets?: () => void;
-  // New props for mode selection
   onModeChange: (mode: GenerationMode) => void;
   onNextStep?: () => void;
 }
 
 const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean; isComplete: boolean; children: React.ReactNode; }> = ({ number, title, isActive, isComplete, children }) => {
-    const statusClass = isActive ? 'border-primary' : (isComplete ? 'border-brand-green' : 'border-surface-lighter');
+    // Brighter active border, subtle inactive
+    const statusClass = isActive ? 'border-primary' : (isComplete ? 'border-brand-green' : 'border-surface-light');
+    
     return (
-        <div className={`border-l-4 ${statusClass} pl-4 py-4 transition-colors`}>
-            <h3 className="font-bold text-xl mb-2 flex items-center">
-                <span className={`flex items-center justify-center w-8 h-8 rounded-full mr-3 text-sm font-bold ${isActive ? 'bg-primary' : (isComplete ? 'bg-brand-green' : 'bg-surface-lightest')}`}>
+        <div className={`border-l-2 ${statusClass} pl-5 py-4 transition-all duration-300`}>
+            <h3 className={`text-lg mb-3 flex items-center transition-colors ${isActive ? 'font-bold text-white' : 'font-medium text-text-subtle'}`}>
+                <span className={`flex items-center justify-center w-6 h-6 rounded-full mr-3 text-xs font-bold transition-colors ${isActive ? 'bg-primary text-white' : (isComplete ? 'bg-brand-green text-surface-dark' : 'bg-surface-light text-text-subtle')}`}>
                     {isComplete ? '✓' : number}
                 </span>
                 {title}
             </h3>
-            {isActive && <div className="space-y-4 mt-4">{children}</div>}
+            {isActive && <div className="space-y-4 mt-2 animate-in fade-in slide-in-from-left-2 duration-300">{children}</div>}
         </div>
     );
 };
@@ -47,16 +48,16 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
     const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLays, animatedMockup, staticMockup, animationConfig, generationMode } = editorState;
   
     return (
-    <aside className="w-full md:w-96 bg-surface-light flex flex-col h-full border-r border-surface-lighter">
-      <div className="p-4 border-b border-surface-lighter flex justify-between items-start z-10 relative">
+    <aside className="w-full md:w-96 bg-surface-DEFAULT flex flex-col h-full border-r border-surface-light shadow-xl z-20">
+      <div className="p-6 border-b border-surface-light flex justify-between items-start z-10 relative bg-surface-DEFAULT">
         <div>
-            <h2 className="text-2xl font-bold">Creative Workflow</h2>
-            <p className="text-text-subtle text-sm">Follow the steps to bring your design to life.</p>
+            <h2 className="text-2xl font-bold tracking-tighter text-white">Creative Workflow</h2>
+            <p className="text-text-subtle text-sm mt-1">Bring your design to life.</p>
         </div>
         {onClose && (
             <button 
                 onClick={onClose}
-                className="md:hidden p-2 text-text-subtle hover:text-text rounded-full hover:bg-surface-lighter transition-colors"
+                className="md:hidden p-2 text-text-subtle hover:text-white rounded-full hover:bg-surface-light transition-colors"
                 aria-label="Close menu"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -66,18 +67,17 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
         )}
       </div>
       
-      {/* Mode Selector - Placed outside scroll area to allow tooltips to overlay header */}
-      <div className="px-4 pt-4 z-20 relative">
+      {/* Mode Selector */}
+      <div className="px-6 pt-6 pb-2 z-20 relative bg-surface-DEFAULT">
         <ModeSelector selectedMode={generationMode} onChangeMode={onModeChange} />
       </div>
       
-      <div className="flex-grow overflow-y-auto px-4 pb-4 space-y-2">
-        
+      <div className="flex-grow overflow-y-auto px-6 pb-6 space-y-2 custom-scrollbar">
         <WorkflowStep number={1} title="Upload Images" isActive={currentStep === 'upload'} isComplete={uploadedAssets.length > 0}>
           <Step1Upload onFilesUploaded={onFilesUploaded} isLoading={isLoading} />
         </WorkflowStep>
         
-        <WorkflowStep number={2} title="Generate" isActive={currentStep === 'flatlay'} isComplete={generatedFlatLays.length > 0}>
+        <WorkflowStep number={2} title="Generate Assets" isActive={currentStep === 'flatlay'} isComplete={generatedFlatLays.length > 0}>
           <Step2FlatLay 
             onGenerate={onGenerateFlatLays} 
             onEdit={onEditFlatLay || (() => {})} 

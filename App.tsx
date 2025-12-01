@@ -2,8 +2,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import HomePage from './pages/HomePage';
 import EditorPage from './pages/EditorPage';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import ApiKeyModal from './components/ApiKeyModal';
 import Loader from './components/Loader';
 import * as authService from './services/authService';
@@ -28,22 +26,21 @@ if (typeof (window as any).aistudio === 'undefined') {
 
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'home' | 'editor' | 'login' | 'register'>('home');
+  const [view, setView] = useState<'home' | 'editor'>('home');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isApiKeySelected, setIsApiKeySelected] = useState<boolean>(false);
   const [isCheckingApiKey, setIsCheckingApiKey] = useState<boolean>(true);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
 
+  // Auto-initialize session (Implicit Login)
   useEffect(() => {
     const initAuth = async () => {
         setIsCheckingAuth(true);
         try {
-            const user = await authService.getCurrentUser();
-            if (user) {
-                setCurrentUser(user);
-            }
+            const user = await authService.initializeSession();
+            setCurrentUser(user);
         } catch (e) {
-            console.error("Auth check failed", e);
+            console.error("Auth initialization failed", e);
         } finally {
             setIsCheckingAuth(false);
         }
@@ -77,55 +74,28 @@ const App: React.FC = () => {
     }
   };
   
-  const handleNavigation = (targetView: 'home' | 'editor' | 'login' | 'register') => {
-    if (targetView === 'editor' && !currentUser) {
-      setView('login');
-      return;
-    }
+  const handleNavigation = (targetView: 'home' | 'editor') => {
     setView(targetView);
   }
 
-  const handleLoginSuccess = (user: User) => {
-    setCurrentUser(user);
-    setView('editor');
-  };
-
-  const handleLogout = () => {
-    authService.logout();
-    setCurrentUser(null);
-    setView('home');
-  };
-
   const renderContent = () => {
     if (isCheckingAuth) {
-        return <Loader message="Restoring session..." />;
+        return <Loader message="Loading your studio..." />;
     }
 
-    switch (view) {
-      case 'login':
-        return <LoginPage onLoginSuccess={handleLoginSuccess} onNavigate={() => setView('register')} />;
-      case 'register':
-        return <RegisterPage onRegisterSuccess={handleLoginSuccess} onNavigate={() => setView('login')} />;
-      case 'editor':
-        if (!currentUser) {
-            // Fix: don't return null here to avoid flickering, just redirect or show login
-            setView('login');
-            return null;
-        }
+    if (view === 'editor' && currentUser) {
         return <EditorPage 
             user={currentUser} 
-            onLogout={handleLogout} 
+            onLogout={() => setView('home')} 
             resetApiKeyStatus={() => setIsApiKeySelected(false)} 
         />;
-      case 'home':
-      default:
-        // If user is already logged in, the "Get Started" button on Home should go straight to editor
-        return <HomePage 
-            onGetStarted={() => handleNavigation('editor')} 
-            onNavigate={handleNavigation} 
-            user={currentUser} 
-        />;
     }
+
+    // Default to Home
+    return <HomePage 
+        onGetStarted={() => handleNavigation('editor')} 
+        user={currentUser} 
+    />;
   };
 
   return (

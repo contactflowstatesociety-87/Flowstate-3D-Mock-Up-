@@ -4,7 +4,6 @@ import type { User } from '../types';
 
 interface HomePageProps {
   onGetStarted: () => void;
-  onNavigate: (view: 'login' | 'register') => void;
   user: User | null;
 }
 
@@ -16,7 +15,7 @@ const MenuIcon = () => (
   </svg>
 );
 
-const HomePage: React.FC<HomePageProps> = ({ onGetStarted, onNavigate, user }) => {
+const HomePage: React.FC<HomePageProps> = ({ onGetStarted, user }) => {
   return (
     <div className="flex flex-col min-h-screen bg-surface-DEFAULT text-text">
       <header className="p-4 md:p-6">
@@ -26,17 +25,9 @@ const HomePage: React.FC<HomePageProps> = ({ onGetStarted, onNavigate, user }) =
             <MenuIcon />
           </button>
           <nav className="hidden md:flex items-center space-x-6">
-            {user ? (
-              <>
-                <span className="text-text-subtle">Welcome, {user.email}!</span>
-                <button onClick={onGetStarted} className="bg-primary px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors">Go to Studio</button>
-              </>
-            ) : (
-              <>
-                <button onClick={() => onNavigate('login')} className="hover:text-text-subtle">Login</button>
-                <button onClick={() => onNavigate('register')} className="bg-primary px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors">Sign Up</button>
-              </>
-            )}
+             <button onClick={onGetStarted} className="bg-primary px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors font-semibold">
+                Go to Studio
+             </button>
           </nav>
         </div>
       </header>
@@ -53,16 +44,12 @@ const HomePage: React.FC<HomePageProps> = ({ onGetStarted, onNavigate, user }) =
         </p>
         
         <button onClick={onGetStarted} className="bg-primary text-white font-semibold py-3 px-8 rounded-lg text-lg hover:bg-primary-hover transition-all duration-300 transform hover:scale-105">
-          Get Started
+          Start Creating
         </button>
-        <p className="text-gray-500 mt-4 text-sm">{user ? 'Start a new project' : 'No sign up required to try!'}</p>
+        <p className="text-gray-500 mt-4 text-sm">Your projects are saved automatically to this device.</p>
 
         <div className="mt-16 w-full max-w-2xl px-4">
           <div className="bg-surface-light p-2 md:p-4 rounded-2xl shadow-2xl shadow-primary/10">
-            {/* 
-              To connect your Supabase video, replace the placeholder URL in the `src` attribute below 
-              with the public URL of your MP4 file from your Supabase storage bucket.
-            */}
             <video 
               src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/Spin_front%20to%20back.mp4" 
               className="rounded-lg w-full h-auto"

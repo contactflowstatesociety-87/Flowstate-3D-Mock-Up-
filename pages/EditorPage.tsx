@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from 'react';
 import type { Operation, GenerateVideosResponse } from '@google/genai';
 import Canvas from '../components/Canvas';
@@ -43,8 +42,8 @@ const INITIAL_EDITOR_STATE: EditorState = {
 const Tooltip: React.FC<{ text: string; children: React.ReactNode; }> = ({ text, children }) => (
     <div className="group relative flex items-center">
         {children}
-        <div className="absolute bottom-full mb-2 w-max bg-surface-lighter text-white text-xs rounded py-1 px-2
-                        opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
+        <div className="absolute top-full mt-2 w-max bg-surface-light text-white text-xs rounded py-1 px-2
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-lg border border-surface-lighter">
             {text}
         </div>
     </div>
@@ -60,8 +59,8 @@ const normalizeImage = (file: File): Promise<{ base64: string; mimeType: string 
       URL.revokeObjectURL(url);
       const canvas = document.createElement('canvas');
       
-      // Safe max dimension for API inputs while maintaining high quality
-      const MAX_DIM = 3072; 
+      // Increased to 4096 for higher resolution inputs (closer to user request for 6K quality)
+      const MAX_DIM = 4096; 
       let width = img.width;
       let height = img.height;
 
@@ -83,7 +82,7 @@ const normalizeImage = (file: File): Promise<{ base64: string; mimeType: string 
       
       // Preserve PNG transparency if applicable, otherwise use JPEG for better compression
       const outputMimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-      const quality = outputMimeType === 'image/jpeg' ? 0.95 : undefined;
+      const quality = outputMimeType === 'image/jpeg' ? 0.98 : undefined;
 
       try {
           const dataUrl = canvas.toDataURL(outputMimeType, quality);
@@ -160,7 +159,41 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     createNewProject();
   }, [user.id, loadProjects, createNewProject]);
 
-  const downloadAsset = (asset: Asset) => {
+  const downloadAsset = async (asset: Asset) => {
+    try {
+        let blob: Blob;
+        const filename = asset.originalFile.name || (asset.type === 'video' ? 'video.mp4' : 'image.png');
+        
+        if (asset.type === 'video' && asset.processedUrl) {
+            const res = await fetch(asset.processedUrl);
+            blob = await res.blob();
+        } else {
+             // Convert Base64 to Blob
+             const byteCharacters = atob(asset.originalB64);
+             const byteNumbers = new Array(byteCharacters.length);
+             for (let i = 0; i < byteCharacters.length; i++) {
+                 byteNumbers[i] = byteCharacters.charCodeAt(i);
+             }
+             const byteArray = new Uint8Array(byteNumbers);
+             blob = new Blob([byteArray], { type: asset.originalFile.type });
+        }
+
+        const file = new File([blob], filename, { type: blob.type });
+
+        // Attempt to use Web Share API (native share sheet) for "Save to Photos" on Mobile
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+             await navigator.share({
+                 files: [file],
+                 title: 'Flowstate Asset',
+                 text: 'Created with Flowstate'
+             });
+             return; 
+        }
+    } catch (e) {
+        console.log("Share API unavailable or cancelled, falling back to download.", e);
+    }
+
+    // Fallback for Desktop or unsupported browsers
     const link = document.createElement('a');
     if (asset.type === 'video' && asset.processedUrl) {
         link.href = asset.processedUrl;
@@ -191,7 +224,6 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     });
   };
 
-  // Modified to accept a generator function for retry capabilities
   const handleVeoOperation = useCallback(async (videoGenerator: () => Promise<Operation<GenerateVideosResponse>>): Promise<Asset> => {
     let messageTimer: ReturnType<typeof setInterval>;
     let attempts = 0;
@@ -295,37 +327,42 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
     Promise.all(assetPromises)
       .then(newAssets => {
+        // Append new assets (support multiple uploads in steps or at once)
         setEditorState(prev => ({
           ...prev,
-          uploadedAssets: newAssets,
+          uploadedAssets: [...prev.uploadedAssets, ...newAssets],
           currentStep: 'flatlay'
         }));
       })
       .catch(err => {
         console.error("File upload failed:", err);
-        setError(err.message);
+        setError(service.getFriendlyErrorMessage(err));
       })
       .finally(() => setIsLoading(false));
   };
 
   const handleGenerateFlatLays = async () => {
     if (editorState.uploadedAssets.length === 0) {
-        setError("Please upload an image first.");
+        setError("Please upload at least one image first.");
         return;
     }
     setIsLoading(true);
     setError(null);
     setIsSidebarOpen(false);
 
+    // Primary asset is the first one uploaded/selected
     const primaryAsset = editorState.uploadedAssets[0];
     const { originalB64 } = primaryAsset;
     const mimeType = primaryAsset.originalFile.type;
     const mode = editorState.generationMode;
+    
+    // Collect all uploaded images to use as reference context for 3D generations
+    const allAssetsB64 = editorState.uploadedAssets.map(a => a.originalB64);
 
     const newGeneratedAssets: Asset[] = [];
 
     try {
-        // --- Helper to generate Strict and Flexible sets (Legacy logic kept for fallback) ---
+        // --- Helper to generate Strict and Flexible sets ---
         const generateStrictSet = async (suffix = '') => {
              try {
                  const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
@@ -339,7 +376,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              } catch (e) { console.warn("Strict flat lay failed", e); }
              
              try {
-                 const res2 = await service.generateStrict3DMockup([originalB64], mimeType, mode);
+                 // Use ALL assets for 3D mockup to improve angle accuracy
+                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode);
                  newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}${suffix}`,
                     type: 'image',
@@ -352,7 +390,8 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
         const generateFlexibleSet = async (suffix = '') => {
              try {
-                const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, mode);
+                // Use ALL assets for flexible photo
+                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode);
                 newGeneratedAssets.push({
                    id: `asset-flex-photo-${Date.now()}${suffix}`,
                    type: 'image',
@@ -378,9 +417,9 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         // --- MAIN GENERATION LOGIC ---
 
         if (mode === 'default') {
-            // DEFAULT 5X LOGIC: Generate one of each style + video
+            // DEFAULT 5X LOGIC
             
-            // 1. Strict Flat Lay
+            // 1. Strict Flat Lay (Uses Primary)
             setLoadingMessage("Generating Strict Flat Lay...");
             try {
                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, 'strict');
@@ -390,57 +429,57 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 });
             } catch(e) { console.warn(e); }
 
-            // 2. Strict 3D Mockup
+            // 2. Strict 3D Mockup (Uses All References)
             setLoadingMessage("Generating Strict 3D Mockup...");
             try {
-                const res2 = await service.generateStrict3DMockup([originalB64], mimeType, 'strict');
+                const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'strict');
                 newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}`, type: 'image', label: 'Strict Mode: 3D Mockup',
                     originalFile: { name: 'strict-mockup.png', type: res2.mimeType }, originalB64: res2.base64
                 });
             } catch(e) { console.warn(e); }
 
-            // 3. Flexible Studio Photo
+            // 3. Flexible Studio Photo (Uses All References)
             setLoadingMessage("Generating Flexible Studio Photo...");
             try {
-                const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, 'flexible');
+                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'flexible');
                 newGeneratedAssets.push({
                     id: `asset-flex-photo-${Date.now()}`, type: 'image', label: 'Flexible Mode: Studio Photo',
                     originalFile: { name: 'flexible-photo.png', type: res3.mimeType }, originalB64: res3.base64
                 });
             } catch(e) { console.warn(e); }
 
-            // 4. Ecommerce Mockup
+            // 4. Ecommerce Mockup (Uses All References)
             setLoadingMessage("Generating Ecommerce Mockup...");
             try {
-                const res4 = await service.generateStrict3DMockup([originalB64], mimeType, 'ecommerce');
+                const res4 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'ecommerce');
                 newGeneratedAssets.push({
                     id: `asset-ecom-mockup-${Date.now()}`, type: 'image', label: 'Ecommerce Mode: Mockup',
                     originalFile: { name: 'ecommerce-mockup.png', type: res4.mimeType }, originalB64: res4.base64
                 });
             } catch(e) { console.warn(e); }
 
-            // 5. Luxury Photo
+            // 5. Luxury Photo (Uses All References)
             setLoadingMessage("Generating Luxury Photo...");
             try {
-                const res5 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, 'luxury');
+                const res5 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'luxury');
                 newGeneratedAssets.push({
                     id: `asset-luxury-photo-${Date.now()}`, type: 'image', label: 'Luxury Mode: Photo',
                     originalFile: { name: 'luxury-photo.png', type: res5.mimeType }, originalB64: res5.base64
                 });
             } catch(e) { console.warn(e); }
 
-            // 6. Complex Material Mockup
+            // 6. Complex Material Mockup (Uses All References)
             setLoadingMessage("Generating Complex Material Mockup...");
             try {
-                const res6 = await service.generateStrict3DMockup([originalB64], mimeType, 'complex');
+                const res6 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'complex');
                 newGeneratedAssets.push({
                     id: `asset-complex-mockup-${Date.now()}`, type: 'image', label: 'Complex Mode: Mockup',
                     originalFile: { name: 'complex-mockup.png', type: res6.mimeType }, originalB64: res6.base64
                 });
             } catch(e) { console.warn(e); }
 
-            // 7. Video
+            // 7. Video (Uses Primary)
             setLoadingMessage("Generating Animated Video...");
             try {
                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, 'default'));
@@ -471,18 +510,18 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                  });
              } catch (e) { console.warn(e); }
 
-             // Generate 1 Mockup
+             // Generate 1 Mockup (All refs)
              try {
-                 const res2 = await service.generateStrict3DMockup([originalB64], mimeType, mode);
+                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode);
                  newGeneratedAssets.push({
                     id: `asset-${mode}-mockup-${Date.now()}`, type: 'image', label: `${mode}: 3D Mockup`,
                     originalFile: { name: `${mode}-mockup.png`, type: res2.mimeType }, originalB64: res2.base64
                  });
              } catch (e) { console.warn(e); }
 
-             // Generate 1 Studio Photo
+             // Generate 1 Studio Photo (All refs)
              try {
-                 const res3 = await service.generateFlexibleStudioPhoto([originalB64], mimeType, mode);
+                 const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode);
                  newGeneratedAssets.push({
                     id: `asset-${mode}-photo-${Date.now()}`, type: 'image', label: `${mode}: Studio Photo`,
                     originalFile: { name: `${mode}-photo.png`, type: res3.mimeType }, originalB64: res3.base64
@@ -510,8 +549,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
     } catch (err: any) {
         console.error(err);
-        setError(`Generation failed: ${err.message || "Unknown error"}`);
-        if (err.message?.includes("API Key")) {
+        const friendlyMsg = service.getFriendlyErrorMessage(err);
+        setError(friendlyMsg);
+        
+        // Show key modal if specifically related to API key permissions
+        if (friendlyMsg.includes("API Key")) {
              resetApiKeyStatus();
         }
     } finally {
@@ -545,7 +587,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
   const handleApplyEdit = async (modifiedBase64: string, prompt: string) => {
       setIsEditorModalOpen(false);
       setIsLoading(true);
-      setLoadingMessage("Applying your edits...");
+      setLoadingMessage("Applying your edits in 8K...");
       
       try {
           const result = await service.editImage(modifiedBase64, 'image/png', prompt);
@@ -553,7 +595,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
           const newAsset: Asset = {
               id: `asset-${Date.now()}`,
               type: 'image',
-              label: 'Edited Asset',
+              label: 'Edited Asset (8K)',
               originalFile: { name: 'edited-flatlay.png', type: result.mimeType },
               originalB64: result.base64,
           };
@@ -565,7 +607,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
           }));
           setToastMessage("Edit applied successfully!");
       } catch (err: any) {
-          setError("Failed to apply edit: " + err.message);
+          setError(service.getFriendlyErrorMessage(err));
       } finally {
           setIsLoading(false);
       }
@@ -638,13 +680,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
     } catch (err: any) {
       console.error(err);
-      let errorMessage = "An unknown error occurred.";
-      if (err.message) errorMessage = err.message;
-      if (err.message?.includes("Requested entity was not found")) {
-        errorMessage = "Your API Key is invalid or expired. Please select a valid key.";
+      const friendlyMsg = service.getFriendlyErrorMessage(err);
+      setError(friendlyMsg);
+      if (friendlyMsg.includes("API Key")) {
         resetApiKeyStatus();
       }
-      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -683,7 +723,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         videoAsset.label = 'Scene Animation';
         setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
     } catch (e: any) {
-        setError(e.message || "Failed to generate scene.");
+        setError(service.getFriendlyErrorMessage(e));
     } finally {
         setIsLoading(false);
     }
@@ -818,11 +858,11 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         />
       </div>
       
-      <main className="flex-1 flex flex-col p-4 md:p-8 bg-surface-DEFAULT overflow-y-auto w-full min-w-0">
-        <header className="flex justify-between items-center mb-6">
+      <main className="flex-1 flex flex-col p-0 md:p-0 bg-surface-DEFAULT w-full min-w-0">
+        <header className="flex justify-between items-center p-4 border-b border-surface-light bg-surface-DEFAULT">
             <div className="flex items-center gap-4">
                 <button 
-                    className="md:hidden p-2 -ml-2 text-text hover:text-primary transition-colors"
+                    className="md:hidden p-2 -ml-2 text-text hover:text-white transition-colors"
                     onClick={() => setIsSidebarOpen(true)}
                     aria-label="Open workflow menu"
                 >
@@ -832,48 +872,44 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 </button>
 
                 <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/98A2DE26-3B81-4646-BDF1-BDB932920CF7%202.png.PNG" alt="Company Logo" className="h-20 w-20" />
-                <h1 className="text-xl font-semibold hidden sm:block">{currentProject?.name || 'Virtual Threads Studio'}</h1>
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
                 <Tooltip text="Undo (Ctrl+Z)">
-                    <button onClick={undo} disabled={!canUndo} className="p-2 rounded-md hover:bg-surface-lighter disabled:text-text-subtle/50 disabled:hover:bg-transparent disabled:cursor-not-allowed">
+                    <button onClick={undo} disabled={!canUndo} className="p-2 rounded-lg hover:bg-surface-light text-text-subtle hover:text-white disabled:text-text-subtle/30 disabled:hover:bg-transparent">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H13a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" /></svg>
                     </button>
                 </Tooltip>
                 <Tooltip text="Redo (Ctrl+Y)">
-                    <button onClick={redo} disabled={!canRedo} className="p-2 rounded-md hover:bg-surface-lighter disabled:text-text-subtle/50 disabled:hover:bg-transparent disabled:cursor-not-allowed">
+                    <button onClick={redo} disabled={!canRedo} className="p-2 rounded-lg hover:bg-surface-light text-text-subtle hover:text-white disabled:text-text-subtle/30 disabled:hover:bg-transparent">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H7a1 1 0 110-2h7.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                     </button>
                 </Tooltip>
 
-                <div className="w-px h-6 bg-surface-lighter mx-2"></div>
+                <div className="w-px h-6 bg-surface-light mx-2"></div>
 
                 <Tooltip text="Save Project">
-                    <button onClick={() => setIsSaveModalOpen(true)} className="p-2 rounded-md hover:bg-surface-lighter">
+                    <button onClick={() => setIsSaveModalOpen(true)} className="p-2 rounded-lg hover:bg-surface-light text-text-subtle hover:text-white transition-colors">
                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V4zm3 0v4h4V4H8zm5 8H7v4h6v-4z" /></svg>
                     </button>
                 </Tooltip>
                 <Tooltip text="My Projects">
-                    <button onClick={() => { loadProjects(); setIsProjectsModalOpen(true); }} className="p-2 rounded-md hover:bg-surface-lighter">
+                    <button onClick={() => { loadProjects(); setIsProjectsModalOpen(true); }} className="p-2 rounded-lg hover:bg-surface-light text-text-subtle hover:text-white transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg>
-                    </button>
-                </Tooltip>
-
-                <div className="w-px h-6 bg-surface-lighter mx-2"></div>
-
-                <Tooltip text="Logout">
-                    <button onClick={onLogout} className="p-2 rounded-md hover:bg-brand-red/20 text-brand-red transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" /></svg>
                     </button>
                 </Tooltip>
             </div>
         </header>
 
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 bg-surface-dark p-6">
             {error && (
-                <div className="mb-4 p-3 bg-brand-red/20 text-red-300 border border-brand-red rounded-md flex justify-between items-center">
-                    <span>{error}</span>
-                    <button onClick={() => setError(null)} className="font-bold text-lg hover:text-white transition-colors">&times;</button>
+                <div className="mb-4 p-4 bg-brand-red/10 text-brand-red border border-brand-red/20 rounded-lg flex justify-between items-center shadow-lg animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                         </svg>
+                         <span className="text-sm font-medium">{error}</span>
+                    </div>
+                    <button onClick={() => setError(null)} className="font-bold text-lg hover:text-white transition-colors p-1 rounded hover:bg-brand-red/20">&times;</button>
                 </div>
             )}
             <Canvas

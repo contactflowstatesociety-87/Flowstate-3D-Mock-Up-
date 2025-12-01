@@ -92,17 +92,20 @@ class Database {
   // --- User Operations ---
 
   async createUser(user: User & { passwordHash: string }): Promise<User> {
-    // Check email uniqueness
-    const store = await this.getStore(USERS_STORE, 'readonly');
-    const index = store.index('email');
-    const existing = await new Promise<any>((resolve) => {
-        const req = index.get(user.email);
-        req.onsuccess = () => resolve(req.result);
-    });
+    // We check existence in authService, but doubly robust here:
+    // We simply use put() which overwrites if ID matches, or adds if new.
+    // However, if email index unique constraint is violated, it throws.
     
-    if (existing) throw new Error("User with this email already exists.");
-
-    await this.put(USERS_STORE, user);
+    // For local guest mode, email isn't critical, but let's handle it.
+    try {
+        await this.put(USERS_STORE, user);
+    } catch(e) {
+        // If it fails (likely email constraint), check if it's the same ID.
+        const existing = await this.getUserById(user.id);
+        if (existing) return existing; // Already exists, just return it.
+        throw e;
+    }
+    
     const { passwordHash, ...safeUser } = user;
     return safeUser;
   }
@@ -117,11 +120,9 @@ class Database {
     });
   }
 
-  async getUserById(id: string): Promise<User | undefined> {
-      const user = await this.get<User & { passwordHash: string }>(USERS_STORE, id);
-      if (!user) return undefined;
-      const { passwordHash, ...safeUser } = user;
-      return safeUser;
+  async getUserById(id: string): Promise<User & { passwordHash: string } | undefined> {
+      // Return full user object including hash (internal use), callers strip it
+      return this.get<User & { passwordHash: string }>(USERS_STORE, id);
   }
 
   // --- Project Operations ---
