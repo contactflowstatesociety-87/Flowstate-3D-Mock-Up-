@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import type { Operation, GenerateVideosResponse } from '@google/genai';
 import Canvas from '../components/Canvas';
@@ -216,7 +217,10 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.onloadedmetadata = () => {
-            // Check for 1080p (>= 1080 in either dimension)
+            // Log resolution for QA purposes
+            console.log(`Video resolution verification: ${video.videoWidth}x${video.videoHeight}`);
+            // Check for at least 1080p (>= 1080 in either dimension)
+            // Goal is 4K, but minimum acceptable is 1080p
             resolve(video.videoWidth >= 1080 || video.videoHeight >= 1080);
         };
         video.onerror = () => resolve(false);
@@ -248,7 +252,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
       while (attempts < maxAttempts) {
         attempts++;
         if (attempts > 1) {
-            setLoadingMessage(`Retrying generation (Attempt ${attempts}/${maxAttempts}) for 1080p quality...`);
+            setLoadingMessage(`QA Failed: Resolution low. Retrying generation (Attempt ${attempts}/${maxAttempts})...`);
         } else {
             startMessageTimer();
         }
@@ -287,7 +291,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // Continue loop
         }
       }
-      throw new Error("Failed to generate video in 1080p after multiple attempts.");
+      throw new Error("Failed to generate video in 1080p+ quality after multiple attempts. Please try again.");
 
     } catch (err: any) {
         throw err;

@@ -81,7 +81,8 @@ const transformImage = async (base64Images: string | string[], mimeType: string,
     const ai = getAiClient();
     const images = Array.isArray(base64Images) ? base64Images : [base64Images];
     
-    const parts = [];
+    // Explicitly typing parts to any to avoid strict SDK type conflicts if they arise
+    const parts: any[] = [];
     for (const b64 of images) {
         if (!b64) continue; // Skip empty strings
         parts.push({ inlineData: { data: b64, mimeType: mimeType } });
@@ -111,7 +112,7 @@ const transformImage = async (base64Images: string | string[], mimeType: string,
 
 export const generateFlatLayOptions = async (base64Image: string, mimeType: string): Promise<GenerationResult[]> => {
     // Kept for backward compatibility
-    const prompt = "Create a professional studio flat lay of this clothing item on a clean, neutral light-gray background. Strictly preserve the exact original product details, logos, colors, and fabric texture. Do not alter the design of the garment. High resolution, photorealistic, soft studio lighting.";
+    const prompt = "Create a professional 6K studio flat lay of this clothing item. Strictly preserve the exact original product details, logos, colors, and fabric texture. High resolution, photorealistic, soft studio lighting.";
     try {
         const result = await transformImage(base64Image, mimeType, prompt);
         return [result];
@@ -135,7 +136,7 @@ export const editImage = async (base64Image: string, mimeType: string, userPromp
 
 export const generateStaticMockup = async (base64Image: string, mimeType: string): Promise<GenerationResult> => {
      // Kept for backward compatibility
-    const prompt = "A hyper-realistic 3D studio photography mock up of this product. CATEGORY DETECTION: If Clothing -> Use INVISIBLE GHOST MANNEQUIN (Hollow form, floating, no visible body). If Accessory (Watch, Bag, Shoe) -> Show as floating 3D object (No mannequin). High detail. PRESERVE LOGOS.";
+    const prompt = "A hyper-realistic 8K 3D studio photography mock up. CATEGORY DETECTION: If Clothing -> Use INVISIBLE GHOST MANNEQUIN (Fit to invisible athletic male body, natural drape, no inflation). If Accessory -> Floating 3D object. PRESERVE LOGOS.";
     return transformImage(base64Image, mimeType, prompt);
 };
 
@@ -149,9 +150,8 @@ PHASE 1 & 2: STRICT MODE FLAT LAY
 Generate an ULTRA-HIGH RESOLUTION 8K studio flat lay of this product.
 
 QUALITY PROTOCOL:
-- UPSCALING: Render at max texture resolution (6K+).
-- SHARPNESS: Enhance fabric grain, stitching, and hardware details.
-- LOGO PROTECTION: FREEZE all logo pixels. Do not blur, warp, or change spelling.
+- UPSCALING: Render at max texture resolution (8K+).
+- LOGO PROTECTION: FREEZE all logo pixels. Do not blur.
 
 Rules:
 - Extract Product Truth File from image.
@@ -175,17 +175,16 @@ INPUT CONTEXT: Use the primary image and any provided reference images to constr
 
 QUALITY PROTOCOL:
 - UPSCALING: Render at 8K resolution.
-- TEXTURE: Hyper-realistic fabric weave and material properties.
 - LOGO PRESERVATION: 100% ACCURACY. NO DISTORTION.
 
 CATEGORY ANALYSIS & RULES:
 1. IF CLOTHING (Jacket, Hoodie, Shirt, Pants):
    - TRANSFORM GEOMETRY: Convert flat lay input into a VOLUMETRIC 3D FORM.
-   - INFLATE THE GARMENT: It must look like it is worn by an invisible body. Sleeves must be round and filled, not flat.
+   - FIT TO INVISIBLE MALE MANNEQUIN: The garment must drape naturally over a defined, muscular male physique (broad shoulders, athletic chest).
+   - NATURAL DRAPE: It should NOT look inflated, puffy, or like a balloon. It must hang with realistic gravity.
    - PERSPECTIVE SHIFT: Change view from Top-Down to STRAIGHT-ON EYE-LEVEL.
    - GHOST MANNEQUIN EFFECT: Create a deep 3D cavity at the neck/collar area. Show the inside back label to prove depth.
    - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN. NO BODY PARTS VISIBLE.
-   - Gravity and Drapery: Fabric must hang naturally from the invisible shoulders.
    - MATERIAL PHYSICS: Maintain 100% accurate fabric texture, grain, and stiffness.
 
 2. IF ACCESSORY / HARD GOODS (Watch, Bag, Shoe, Hat, Bottle):
@@ -202,9 +201,9 @@ UNIVERSAL RULES:
 - Background: Clean studio gray/white.
 - Camera: Centered, 50-85mm lens equivalent.`;
     return transformImage(base64Images, mimeType, prompt);
-};
+  },
 
-export const generateFlexibleStudioPhoto = async (base64Images: string | string[], mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
+  generateFlexibleStudioPhoto = async (base64Images: string[], mimeType: string, mode: GenerationMode): Promise<GenerationResult> => {
     const header = getModeHeader(mode);
     const prompt = `${header}
 
@@ -218,7 +217,8 @@ QUALITY PROTOCOL:
 
 CATEGORY ANALYSIS:
 - IF CLOTHING: Use INVISIBLE GHOST MANNEQUIN. 
-  - TRANSFORM GEOMETRY: Inflate the garment to look filled and worn.
+  - TRANSFORM GEOMETRY: Fit to invisible athletic male form. Broad shoulders, defined chest.
+  - NATURAL DRAPE: No inflation. Fabric must hang naturally.
   - VOLUMETRIC DEPTH: Sleeves and torso must be cylindrical and full, never flat.
   - HOLLOW FORM: Show the inside neck/collar details.
   - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN.
@@ -233,24 +233,25 @@ Rules:
 - Enhance fabric/material microtexture and realism.
 - Look like a high-end commercial campaign.`;
     return transformImage(base64Images, mimeType, prompt);
-};
+  };
 
 export const generateFlexibleVideo = async (base64Image: string, mimeType: string, mode: GenerationMode): Promise<Operation<GenerateVideosResponse>> => {
     const header = getModeHeader(mode);
     const prompt = `${header}
 
 PHASE 3: FLEXIBLE MODE 3D ANIMATED VIDEO
-Generate a 4K 3D animated mockup video.
+Generate an 8K 3D animated mockup video.
 
 QUALITY PROTOCOL:
-- RENDER: 4K VISUAL FIDELITY.
-- DETAILS: Upscale fabric textures.
+- RENDER: 8K ULTRA-HD VISUALS. SHARP FOCUS. NO BLUR. NO PIXELATION.
+- MATERIALS: Hyper-realistic smooth fabric. MATTE FINISH. NO NOISE. NO GRAIN. NO FUZZ. NOT TOWEL-LIKE.
 - LOGOS: FREEZE and PROTECT branding.
 
 CATEGORY ANALYSIS & RULES (CRITICAL):
 1. IF CLOTHING (Jacket, Shirt, Hoodie):
    - Use INVISIBLE GHOST MANNEQUIN.
-   - INFLATE THE GARMENT. It must look worn and volumetric.
+   - FIT TO INVISIBLE ATHLETIC MALE FORM.
+   - NATURAL DRAPE: The clothing must NOT look inflated or like a balloon. It must move naturally on an invisible body.
    - Hollow clothing form. NO VISIBLE MANNEQUIN. NO BODY PARTS.
    - Show inside of collar.
    - Fabric moves with gentle breeze or breathing motion.
@@ -267,13 +268,13 @@ UNIVERSAL RULES:
 - SILENT VIDEO. NO AUDIO TRACK.
 - Maintain 100% product design accuracy. DO NOT COMPROMISE LOGOS.
 - Clean professional studio lighting.
-- Smooth camera motion (slow orbit or gentle push in).
+- Smooth cinematic camera motion (slow orbit or gentle push in).
 - Output must be professional, hyper realistic, ecommerce grade.`;
 
     const ai = getAiClient();
     
     return ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+        model: 'veo-3.1-generate-preview', // High quality model
         image: {
             imageBytes: base64Image,
             mimeType: mimeType,
@@ -281,7 +282,7 @@ UNIVERSAL RULES:
         prompt: prompt,
         config: {
              numberOfVideos: 1,
-             resolution: '1080p', // Enforce 1080p minimum, model attempts higher detail based on prompt
+             resolution: '1080p', // Enforce max supported resolution
              aspectRatio: '9:16'
         }
     });
@@ -293,10 +294,13 @@ export const generateVideoFromImage = async (base64Image: string, mimeType: stri
     // Append safety checks to user/system prompt
     const safePrompt = `${prompt} 
     CRITICAL QUALITY CONTROL: 
-    1. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
-    2. VISUAL QUALITY: 4K TEXTURE DETAIL. UPSCALED.
-    3. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
-    4. SILENT VIDEO. NO AUDIO TRACK.`;
+    1. RENDER QUALITY: 8K ULTRA-REALISTIC. NO PIXELATION. NO NOISE.
+    2. MATERIALS: SMOOTH, PREMIUM TECHNICAL FABRIC. MATTE FINISH. NO GRAIN. NO FUZZ. NOT TERRY CLOTH. NOT TOWEL-LIKE.
+    3. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
+    4. IF CLOTHING: FIT TO INVISIBLE ATHLETIC MALE MANNEQUIN. NATURAL DRAPE. NO BALLOON EFFECT.
+    5. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
+    6. MOTION: CINEMATIC SMOOTH. 60FPS FEEL.
+    7. SILENT VIDEO. NO AUDIO TRACK.`;
 
     // Ensure resolution is high
     const config = {
@@ -306,7 +310,7 @@ export const generateVideoFromImage = async (base64Image: string, mimeType: stri
     };
 
     return ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+        model: 'veo-3.1-generate-preview', // High quality model - switched from fast-generate-preview
         image: {
             imageBytes: base64Image,
             mimeType: mimeType,

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { Operation, GenerateVideosResponse, GenerateContentResponse } from "@google/genai";
@@ -140,7 +141,7 @@ PHASE 1 & 2: STRICT MODE FLAT LAY
 Generate an ULTRA-HIGH RESOLUTION 8K studio flat lay of this product.
 
 QUALITY PROTOCOL:
-- UPSCALING: Render at max texture resolution (6K+).
+- UPSCALING: Render at max texture resolution (8K+).
 - LOGO PROTECTION: FREEZE all logo pixels. Do not blur.
 
 Rules:
@@ -170,11 +171,11 @@ QUALITY PROTOCOL:
 CATEGORY ANALYSIS & RULES:
 1. IF CLOTHING (Jacket, Hoodie, Shirt, Pants):
    - TRANSFORM GEOMETRY: Convert flat lay input into a VOLUMETRIC 3D FORM.
-   - INFLATE THE GARMENT: It must look like it is worn by an invisible body. Sleeves must be round and filled, not flat.
+   - FIT TO INVISIBLE MALE MANNEQUIN: The garment must drape naturally over a defined, muscular male physique (broad shoulders, athletic chest).
+   - NATURAL DRAPE: It should NOT look inflated, puffy, or like a balloon. It must hang with realistic gravity.
    - PERSPECTIVE SHIFT: Change view from Top-Down to STRAIGHT-ON EYE-LEVEL.
    - GHOST MANNEQUIN EFFECT: Create a deep 3D cavity at the neck/collar area. Show the inside back label to prove depth.
    - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN. NO BODY PARTS VISIBLE.
-   - Gravity and Drapery: Fabric must hang naturally from the invisible shoulders.
    - MATERIAL PHYSICS: Maintain 100% accurate fabric texture, grain, and stiffness.
 
 2. IF ACCESSORY / HARD GOODS (Watch, Bag, Shoe, Hat, Bottle):
@@ -207,7 +208,8 @@ QUALITY PROTOCOL:
 
 CATEGORY ANALYSIS:
 - IF CLOTHING: Use INVISIBLE GHOST MANNEQUIN. 
-  - TRANSFORM GEOMETRY: Inflate the garment to look filled and worn.
+  - TRANSFORM GEOMETRY: Fit to invisible athletic male form. Broad shoulders, defined chest.
+  - NATURAL DRAPE: No inflation. Fabric must hang naturally.
   - VOLUMETRIC DEPTH: Sleeves and torso must be cylindrical and full, never flat.
   - HOLLOW FORM: Show the inside neck/collar details.
   - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN.
@@ -240,17 +242,18 @@ Rules:
     const prompt = `${header}
 
 PHASE 3: FLEXIBLE MODE 3D ANIMATED VIDEO
-Generate a 4K 3D animated mockup video.
+Generate an 8K 3D animated mockup video.
 
 QUALITY PROTOCOL:
-- RENDER: 4K VISUAL FIDELITY.
-- DETAILS: Upscale fabric textures.
+- RENDER: 8K ULTRA-HD VISUALS. SHARP FOCUS. NO BLUR. NO PIXELATION.
+- MATERIALS: Hyper-realistic smooth fabric. MATTE FINISH. NO NOISE. NO GRAIN. NO FUZZ. NOT TOWEL-LIKE.
 - LOGOS: FREEZE and PROTECT branding.
 
 CATEGORY ANALYSIS & RULES (CRITICAL):
 1. IF CLOTHING (Jacket, Shirt, Hoodie):
    - Use INVISIBLE GHOST MANNEQUIN.
-   - INFLATE THE GARMENT. It must look worn and volumetric.
+   - FIT TO INVISIBLE ATHLETIC MALE FORM.
+   - NATURAL DRAPE: The clothing must NOT look inflated or like a balloon. It must move naturally on an invisible body.
    - Hollow clothing form. NO VISIBLE MANNEQUIN. NO BODY PARTS.
    - Show inside of collar.
    - Fabric moves with gentle breeze or breathing motion.
@@ -267,12 +270,12 @@ UNIVERSAL RULES:
 - SILENT VIDEO. NO AUDIO TRACK.
 - Maintain 100% product design accuracy. DO NOT COMPROMISE LOGOS.
 - Clean professional studio lighting.
-- Smooth camera motion (slow orbit or gentle push in).
+- Smooth cinematic camera motion (slow orbit or gentle push in).
 - Output must be professional, hyper realistic, ecommerce grade.`;
 
     const ai = getAiClient();
     return ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+        model: 'veo-3.1-generate-preview', // High quality model
         image: { imageBytes: base64Image, mimeType },
         prompt,
         config: { numberOfVideos: 1, resolution: '1080p', aspectRatio: '9:16' }
@@ -283,16 +286,26 @@ UNIVERSAL RULES:
     const ai = getAiClient();
     const safePrompt = `${prompt} 
     CRITICAL QUALITY CONTROL: 
-    1. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
-    2. VISUAL QUALITY: 4K TEXTURE DETAIL. UPSCALED.
-    3. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
-    4. SILENT VIDEO. NO AUDIO TRACK.`;
+    1. RENDER QUALITY: 8K ULTRA-REALISTIC. NO PIXELATION. NO NOISE.
+    2. MATERIALS: SMOOTH, PREMIUM TECHNICAL FABRIC. MATTE FINISH. NO GRAIN. NO FUZZ. NOT TERRY CLOTH. NOT TOWEL-LIKE.
+    3. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
+    4. IF CLOTHING: FIT TO INVISIBLE ATHLETIC MALE MANNEQUIN. NATURAL DRAPE. NO BALLOON EFFECT.
+    5. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
+    6. MOTION: CINEMATIC SMOOTH. 60FPS FEEL.
+    7. SILENT VIDEO. NO AUDIO TRACK.`;
+
+    // Ensure resolution is high
+    const config = {
+        numberOfVideos: 1,
+        resolution: '1080p', // Enforce 1080p
+        aspectRatio: aspectRatio
+    };
 
     return ai.models.generateVideos({
-        model: 'veo-3.1-fast-generate-preview',
+        model: 'veo-3.1-generate-preview', // High quality model
         image: { imageBytes: base64Image, mimeType },
         prompt: safePrompt,
-        config: { numberOfVideos: 1, resolution: '1080p', aspectRatio }
+        config: config
     });
   },
 
@@ -322,6 +335,121 @@ const ApiKeyModal = ({ onSelectKey }: { onSelectKey: () => void }) => (
     </div>
   </div>
 );
+
+// --- Image Editor (Integrated) ---
+const ImageEditor = ({ imageUrl, onSave, onClose }: { imageUrl: string, onSave: (b64: string, p: string) => void, onClose: () => void }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [tool, setTool] = useState<'brush' | 'eraser'>('brush');
+  const [prompt, setPrompt] = useState('');
+  const [brushColor, setBrushColor] = useState('#EF4444');
+  const [brushSize, setBrushSize] = useState(20);
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (canvas && ctx) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = imageUrl;
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+    }
+  }, [imageUrl]);
+
+  const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const { x, y } = getPointerPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const { x, y } = getPointerPos(e);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    if (isDrawing) {
+        const ctx = canvasRef.current?.getContext('2d');
+        ctx?.closePath();
+        setIsDrawing(false);
+    }
+  };
+
+  const handleApply = () => {
+    if (!prompt.trim()) { alert("Please describe the edit."); return; }
+    const canvas = canvasRef.current;
+    if (canvas) {
+        const dataUrl = canvas.toDataURL('image/png');
+        onSave(dataUrl.split(',')[1], prompt);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-900/95 z-[80] flex flex-col p-4">
+      <div className="flex justify-between items-center mb-4 text-white">
+        <h2 className="text-xl font-bold">Image Editor (6K)</h2>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+      </div>
+      <div className="flex-1 overflow-auto bg-black relative flex items-center justify-center border border-gray-700" ref={containerRef}>
+         <canvas 
+           ref={canvasRef}
+           onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+           style={{ width: canvasRef.current ? canvasRef.current.width * zoom : 'auto', height: 'auto', maxWidth: 'none' }}
+           className="cursor-crosshair bg-white shadow-lg"
+         />
+      </div>
+      <div className="bg-gray-800 p-4 mt-4 rounded-lg flex flex-wrap gap-4 items-center justify-between text-white">
+         <div className="flex gap-4 items-center">
+            <div className="flex bg-gray-700 rounded p-1">
+                <button onClick={()=>setTool('brush')} className={`px-3 py-1 rounded ${tool==='brush'?'bg-blue-600':''}`}>Brush</button>
+                <button onClick={()=>setTool('eraser')} className={`px-3 py-1 rounded ${tool==='eraser'?'bg-blue-600':''}`}>Eraser</button>
+            </div>
+            {tool==='brush' && <div className="flex gap-1">
+                {['#EF4444','#10B981','#3B82F6'].map(c=><button key={c} onClick={()=>setBrushColor(c)} className={`w-6 h-6 rounded-full ${brushColor===c?'ring-2 ring-white':''}`} style={{backgroundColor:c}}/>)}
+            </div>}
+            <div className="flex items-center gap-2">
+                <span className="text-xs">Zoom</span>
+                <button onClick={()=>setZoom(z=>Math.max(0.1, z/1.2))} className="bg-gray-700 px-2 rounded">-</button>
+                <span className="text-xs w-8 text-center">{Math.round(zoom*100)}%</span>
+                <button onClick={()=>setZoom(z=>Math.min(5, z*1.2))} className="bg-gray-700 px-2 rounded">+</button>
+            </div>
+         </div>
+         <div className="flex gap-2 flex-1 max-w-lg">
+             <input value={prompt} onChange={e=>setPrompt(e.target.value)} placeholder="Describe fix (e.g. Remove logo)" className="flex-1 px-3 py-2 bg-gray-700 rounded border border-gray-600 text-sm" />
+             <button onClick={handleApply} className="bg-green-600 px-4 py-2 rounded font-bold hover:bg-green-700">Apply Fix</button>
+         </div>
+      </div>
+    </div>
+  );
+};
 
 // --- Mode Selector ---
 const ModeSelector = ({ selectedMode, onChangeMode }: { selectedMode: GenerationMode; onChangeMode: (m: GenerationMode) => void }) => {
@@ -427,12 +555,16 @@ export default function FlowstateUnified() {
   const [previewAsset, setPreviewAsset] = useState<Asset|null>(null);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<Asset|null>(null);
 
   const checkVideoResolution = (videoUrl: string): Promise<boolean> => {
     return new Promise((resolve) => {
         const video = document.createElement('video');
         video.preload = 'metadata';
-        video.onloadedmetadata = () => resolve(video.videoWidth >= 1080 || video.videoHeight >= 1080);
+        video.onloadedmetadata = () => {
+            console.log(`Video resolution verification: ${video.videoWidth}x${video.videoHeight}`);
+            resolve(video.videoWidth >= 1080 || video.videoHeight >= 1080);
+        };
         video.onerror = () => resolve(false);
         video.src = videoUrl;
     });
@@ -442,7 +574,7 @@ export default function FlowstateUnified() {
       let attempts = 0; const maxAttempts = 3;
       while(attempts < maxAttempts) {
           attempts++;
-          if(attempts > 1) setLoadingMsg(`Retrying video (Attempt ${attempts}/${maxAttempts}) for 1080p...`);
+          if(attempts > 1) setLoadingMsg(`QA Failed: Resolution low. Retrying video (Attempt ${attempts}/${maxAttempts})...`);
           
           let op = await videoGenerator();
           while(!op.done) { await new Promise(r => setTimeout(r, 5000)); op = await aiService.checkVideoOperationStatus(op); }
@@ -455,7 +587,7 @@ export default function FlowstateUnified() {
               if(await checkVideoResolution(url)) return { id: `vid-${Date.now()}`, type: 'video', originalFile: { name: 'video.mp4', type: 'video/mp4' }, originalB64: '', processedUrl: url };
           }
       }
-      throw new Error("Failed to generate 1080p video after retries.");
+      throw new Error("Failed to generate 1080p+ video after retries.");
   };
 
   const handleUpload = async (files: File[]) => {
@@ -466,8 +598,19 @@ export default function FlowstateUnified() {
             return { id: `up-${Date.now()}-${Math.random()}`, type: 'image', originalFile: { name: f.name, type: mimeType }, originalB64: base64 } as Asset;
         }));
         setEditorState(p => ({ ...p, uploadedAssets: newAssets, currentStep: 'flatlay' }));
-    } catch(e: any) { setError(getFriendlyErrorMessage(e)); }
+    } catch(e: any) { setError(e.message); }
     setIsLoading(false);
+  };
+
+  const handleApplyEdit = async (b64: string, prompt: string) => {
+      setEditingAsset(null);
+      setIsLoading(true); setLoadingMsg("Applying Edit (6K)...");
+      try {
+          const res = await aiService.editImage(b64, 'image/png', prompt);
+          const newAsset: Asset = { id: `ed-${Date.now()}`, type: 'image', label: 'Edited (6K)', originalFile: {name:'edited.png',type:res.mimeType}, originalB64: res.base64 };
+          setEditorState(p => ({ ...p, generatedFlatLays: [newAsset, ...p.generatedFlatLays], selectedFlatLays: [newAsset] }));
+      } catch(e:any) { setError(getFriendlyErrorMessage(e)); }
+      setIsLoading(false);
   };
 
   const handleGenerate = async () => {
@@ -530,11 +673,7 @@ export default function FlowstateUnified() {
         }
 
         setEditorState(p => ({ ...p, generatedFlatLays: newAssets, selectedFlatLays: [] }));
-    } catch(e: any) { 
-        const friendlyMsg = getFriendlyErrorMessage(e);
-        setError(friendlyMsg);
-        if(friendlyMsg.includes('API Key')) setShowKeyModal(true); 
-    }
+    } catch(e: any) { setError(e.message); if(e.message.includes('Key')) setShowKeyModal(true); }
     setIsLoading(false);
   };
 
@@ -563,11 +702,7 @@ export default function FlowstateUnified() {
              vid.label = "Animated Video";
              setEditorState(p => ({...p, animatedMockup: vid, currentStep: 'scene'}));
          }
-     } catch(e: any) { 
-         const friendlyMsg = getFriendlyErrorMessage(e);
-         setError(friendlyMsg);
-         if(friendlyMsg.includes('API Key')) setShowKeyModal(true); 
-    }
+     } catch(e: any) { setError(e.message); if(e.message.includes('Key')) setShowKeyModal(true); }
      setIsLoading(false);
   };
 
@@ -584,6 +719,8 @@ export default function FlowstateUnified() {
       {isLoading && <Loader message={loadingMsg} />}
       {error && <div className="fixed top-4 right-4 bg-red-600 text-white p-3 rounded z-50">{error} <button onClick={()=>setError(null)} className="ml-2 font-bold">x</button></div>}
       {showKeyModal && <ApiKeyModal onSelectKey={async()=>{await (window as any).aistudio?.openSelectKey(); setShowKeyModal(false)}} />}
+      {editingAsset && <ImageEditor imageUrl={`data:${editingAsset.originalFile.type};base64,${editingAsset.originalB64}`} onSave={handleApplyEdit} onClose={()=>setEditingAsset(null)} />}
+      
       {previewAsset && (
         <div className="fixed inset-0 bg-black/95 z-[70] flex items-center justify-center p-4">
             <button className="absolute top-4 right-4 text-white text-2xl" onClick={()=>setPreviewAsset(null)}>✕</button>
@@ -606,7 +743,14 @@ export default function FlowstateUnified() {
                  <div className={`pl-4 border-l-2 ${editorState.currentStep==='flatlay'?'border-blue-500':'border-gray-700'}`}>
                      <h3 className="font-bold text-sm mb-2">2. Generate Assets</h3>
                      {editorState.currentStep==='flatlay' && <button onClick={handleGenerate} className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 rounded transition-colors">Generate Suite</button>}
-                     {editorState.generatedFlatLays.length > 0 && <button onClick={()=>setEditorState(p=>({...p, currentStep: 'animate'}))} disabled={!editorState.selectedFlatLays.length} className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 rounded disabled:opacity-50">Next Step &rarr;</button>}
+                     {editorState.generatedFlatLays.length > 0 && (
+                        <div className="mt-4 space-y-2 border-t border-gray-700 pt-4">
+                            {editorState.selectedFlatLays.length === 1 && (
+                                <button onClick={()=>setEditingAsset(editorState.selectedFlatLays[0])} className="w-full bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-bold py-2 rounded">Edit / Fix Selected</button>
+                            )}
+                            <button onClick={()=>setEditorState(p=>({...p, currentStep: 'animate'}))} disabled={!editorState.selectedFlatLays.length} className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 rounded disabled:opacity-50">Next Step &rarr;</button>
+                        </div>
+                     )}
                  </div>
 
                  <div className={`pl-4 border-l-2 ${editorState.currentStep==='animate'?'border-blue-500':'border-gray-700'}`}>
