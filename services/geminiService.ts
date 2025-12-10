@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { Operation, GenerateVideosResponse, GenerateContentResponse } from "@google/genai";
 import type { GenerationResult, GenerationMode, StrictnessLevel } from '../types';
@@ -61,7 +62,7 @@ export const getFriendlyErrorMessage = (error: any): string => {
 };
 
 const modeHeaderMap: Record<string, string> = {
-  default: "Mode Default5X. Use the full Flowstate Society 5X Generation Engine. You must generate one of each style (Strict, Flexible, Ecommerce, Luxury, Complex) to provide a full range of options.",
+  default: "Mode Default5X. Use the full 5X Generation Engine. You must generate one of each style (Strict, Flexible, Ecommerce, Luxury, Complex) to provide a full range of options.",
   strict: "Mode Strict. Activate Strict Only Mode. Generate only strict outputs with locked lighting, locked camera, and zero creative variation.",
   flexible: "Mode Flexible. Activate Flexible Only Mode. Generate only flexible premium creative outputs while keeping product details accurate.",
   ecommerce: "Mode Ecommerce. Activate Ecommerce Optimized Mode for clean white or light gray backgrounds and marketplace ready outputs.",
@@ -215,9 +216,13 @@ ${GHOST_MANNEQUIN_RULES}
 
 CATEGORY ANALYSIS & RULES:
 1. IF CLOTHING (Jacket, Hoodie, Shirt, Pants):
-   - The form should be athletic (broad shoulders, defined chest) but INVISIBLE.
+   - TRANSFORM GEOMETRY: Convert flat lay input into a VOLUMETRIC 3D FORM.
+   - INFLATE THE GARMENT: It must look like it is worn by an invisible body. Sleeves must be round and filled, not flat.
    - PERSPECTIVE SHIFT: Change view from Top-Down to STRAIGHT-ON EYE-LEVEL.
-   - NATURAL DRAPE: Realistic gravity and folds. Not stiff.
+   - GHOST MANNEQUIN EFFECT: Create a deep 3D cavity at the neck/collar area. Show the inside back label to prove depth.
+   - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN. NO BODY PARTS VISIBLE.
+   - Gravity and Drapery: Fabric must hang naturally from the invisible shoulders.
+   - MATERIAL PHYSICS: Maintain 100% accurate fabric texture, grain, and stiffness.
 
 2. IF ACCESSORY / HARD GOODS (Watch, Bag, Shoe, Hat, Bottle):
    - Display as a floating 3D product object.
@@ -235,7 +240,7 @@ UNIVERSAL RULES:
     return transformImage(base64Images, mimeType, prompt);
 };
 
-export const generateFlexibleStudioPhoto = async (base64Images: string[], mimeType: string, mode: GenerationMode, strictness: StrictnessLevel): Promise<GenerationResult> => {
+export const generateFlexibleStudioPhoto = async (base64Images: string | string[], mimeType: string, mode: GenerationMode, strictness: StrictnessLevel): Promise<GenerationResult> => {
     const header = getModeHeader(mode);
     const strictnessPrompt = getStrictnessInstruction(strictness);
 
@@ -250,9 +255,11 @@ ${RESOLUTION_RULES}
 ${GHOST_MANNEQUIN_RULES}
 
 CATEGORY ANALYSIS:
-- IF CLOTHING: CRITICAL INVISIBLE GHOST MANNEQUIN.
-  - TRANSFORM GEOMETRY: Fit to invisible athletic male form. Broad shoulders, defined chest.
-  - NATURAL DRAPE: No inflation. Fabric must hang naturally.
+- IF CLOTHING: Use INVISIBLE GHOST MANNEQUIN. 
+  - TRANSFORM GEOMETRY: Inflate the garment to look filled and worn.
+  - VOLUMETRIC DEPTH: Sleeves and torso must be cylindrical and full, never flat.
+  - HOLLOW FORM: Show the inside neck/collar details.
+  - NO VISIBLE MANNEQUIN. NO CLEAR OR GLASS MANNEQUIN.
 - IF ACCESSORY/WATCH/BAG: Display as floating 3D product. DO NOT morph into clothing.
   - CRITICAL: EXACT REPLICA OF DIAL, LOGO, AND TEXTURE REQUIRED.
 
@@ -274,18 +281,22 @@ export const generateFlexibleVideo = async (base64Image: string, mimeType: strin
 ${strictnessPrompt}
 
 PHASE 3: FLEXIBLE MODE 3D ANIMATED VIDEO
-Generate an 8K 3D animated mockup video.
+Generate a 4K 3D animated mockup video.
 
 ${RESOLUTION_RULES}
 ${GHOST_MANNEQUIN_RULES}
 
 QUALITY PROTOCOL:
-- RENDER: 8K ULTRA-HD VISUALS. SHARP FOCUS. NO BLUR. NO PIXELATION.
-- MATERIALS: Hyper-realistic smooth fabric. MATTE FINISH. NO NOISE. NO GRAIN. NO FUZZ. NOT TOWEL-LIKE.
+- RENDER: 4K VISUAL FIDELITY.
+- DETAILS: Upscale fabric textures.
 - LOGOS: FREEZE and PROTECT branding.
 
 CATEGORY ANALYSIS & RULES (CRITICAL):
 1. IF CLOTHING (Jacket, Shirt, Hoodie):
+   - Use INVISIBLE GHOST MANNEQUIN.
+   - INFLATE THE GARMENT. It must look worn and volumetric.
+   - Hollow clothing form. NO VISIBLE MANNEQUIN. NO BODY PARTS.
+   - Show inside of collar.
    - Fabric moves with gentle breeze or breathing motion.
 
 2. IF ACCESSORY (Watch, Bag, Shoe):
@@ -299,24 +310,17 @@ CATEGORY ANALYSIS & RULES (CRITICAL):
 UNIVERSAL RULES:
 - SILENT VIDEO. NO AUDIO TRACK.
 - Maintain 100% product design accuracy. DO NOT COMPROMISE LOGOS.
+- DO NOT ADD ANY NEW LOGOS, TEXT, OR BRANDING NOT PRESENT IN SOURCE.
 - Clean professional studio lighting.
-- Smooth cinematic camera motion (slow orbit or gentle push in).
+- Smooth camera motion (slow orbit or gentle push in).
 - Output must be professional, hyper realistic, ecommerce grade.`;
 
     const ai = getAiClient();
-    
     return ai.models.generateVideos({
-        model: 'veo-3.1-generate-preview', // High quality model
-        image: {
-            imageBytes: base64Image,
-            mimeType: mimeType,
-        },
-        prompt: prompt,
-        config: {
-             numberOfVideos: 1,
-             resolution: '1080p', // Enforce max supported resolution
-             aspectRatio: '9:16'
-        }
+        model: 'veo-3.1-fast-generate-preview',
+        image: { imageBytes: base64Image, mimeType },
+        prompt,
+        config: { numberOfVideos: 1, resolution: '1080p', aspectRatio: '9:16' }
     });
 };
 
@@ -336,7 +340,8 @@ export const generateVideoFromImage = async (base64Image: string, mimeType: stri
     3. EXACT COPY OF PRODUCT. DO NOT CHANGE LOGOS, COLORS, OR TEXT. 
     4. IF WATCH/ACCESSORY: PRESERVE DIAL AND HANDS EXACTLY. DO NOT MORPH INTO CLOTHING.
     5. MOTION: CINEMATIC SMOOTH. 60FPS FEEL.
-    6. SILENT VIDEO. NO AUDIO TRACK.`;
+    6. SILENT VIDEO. NO AUDIO TRACK.
+    7. ABSOLUTELY NO NEW TEXT, LOGOS, OR BRANDING SHOULD BE ADDED. PRESERVE SOURCE IMAGE EXACTLY.`;
 
     // Ensure resolution is high
     const config = {
@@ -356,7 +361,7 @@ export const generateVideoFromImage = async (base64Image: string, mimeType: stri
     });
 };
 
-export const checkVideoOperationStatus = async (operation: Operation<GenerateVideosResponse>): Promise<Operation<GenerateVideosResponse>> => {
-    const ai = getAiClient();
-    return ai.operations.getVideosOperation({ operation });
+export const checkVideoOperationStatus = async (operation: Operation<GenerateVideosResponse>) => {
+      const ai = getAiClient();
+      return ai.operations.getVideosOperation({ operation });
 };

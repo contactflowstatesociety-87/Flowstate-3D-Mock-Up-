@@ -8,20 +8,48 @@ const PROJECTS_STORE = 'projects';
 
 class Database {
   private db: IDBDatabase | null = null;
+  private openRequest: Promise<IDBDatabase> | null = null;
 
   private async open(): Promise<IDBDatabase> {
-    if (this.db) return this.db;
+    // If we have a valid open connection, use it
+    if (this.db) {
+      return this.db;
+    }
 
-    return new Promise((resolve, reject) => {
+    // If an open request is already in progress, return that promise to prevent multiple opens
+    if (this.openRequest) {
+      return this.openRequest;
+    }
+
+    this.openRequest = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = (event) => {
         console.error("Database error:", (event.target as IDBOpenDBRequest).error);
+        this.openRequest = null;
         reject((event.target as IDBOpenDBRequest).error);
       };
 
       request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
+        const database = (event.target as IDBOpenDBRequest).result;
+
+        // Handle connection closure (e.g., manual close or error)
+        database.onclose = () => {
+          console.warn("Database connection closed unexpectedly.");
+          this.db = null;
+          this.openRequest = null;
+        };
+
+        // Handle version changes (e.g., another tab upgrades the DB)
+        database.onversionchange = () => {
+          console.warn("Database version change detected. Closing connection.");
+          database.close();
+          this.db = null;
+          this.openRequest = null;
+        };
+
+        this.db = database;
+        this.openRequest = null;
         resolve(this.db!);
       };
 
@@ -42,14 +70,33 @@ class Database {
         }
       };
     });
+
+    return this.openRequest;
   }
 
   // --- Generic Helpers ---
 
   private async getStore(storeName: string, mode: IDBTransactionMode): Promise<IDBObjectStore> {
-    const db = await this.open();
-    const transaction = db.transaction(storeName, mode);
-    return transaction.objectStore(storeName);
+    try {
+      const db = await this.open();
+      const transaction = db.transaction(storeName, mode);
+      return transaction.objectStore(storeName);
+    } catch (error: any) {
+      // Retry logic: If connection is closing or invalid, reset and try once more
+      const isClosing = error.message && error.message.includes('closing');
+      const isInvalidState = error.name === 'InvalidStateError';
+      
+      if (isClosing || isInvalidState) {
+        console.warn('Database connection stale. Re-opening and retrying transaction...');
+        this.db = null;
+        this.openRequest = null;
+        
+        const db = await this.open();
+        const transaction = db.transaction(storeName, mode);
+        return transaction.objectStore(storeName);
+      }
+      throw error;
+    }
   }
 
   private async get<T>(storeName: string, key: string): Promise<T | undefined> {
