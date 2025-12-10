@@ -10,6 +10,7 @@ export type AnimationPreset = '360 Spin' | 'Walking' | 'Windy' | 'Jumping Jacks'
 export type AspectRatio = '16:9' | '9:16';
 
 export type GenerationMode = 'default' | 'strict' | 'flexible' | 'ecommerce' | 'luxury' | 'complex';
+export type StrictnessLevel = 'strict' | 'balanced' | 'creative';
 
 export interface AnimationConfig {
   preset: AnimationPreset | null;
@@ -22,6 +23,7 @@ export interface AnimationConfig {
 export interface EditorState {
   currentStep: WorkflowStep;
   generationMode: GenerationMode;
+  strictness: StrictnessLevel;
   uploadedAssets: Asset[];
   generatedFlatLays: Asset[];
   selectedFlatLays: Asset[]; // Changed from single Asset | null to Asset[]

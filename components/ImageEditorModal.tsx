@@ -39,19 +39,34 @@ const ImageEditorModal: React.FC<ImageEditorModalProps> = ({ imageUrl, onSave, o
     }
   }, [imageUrl]);
 
-  const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getPointerPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
+
+    let clientX, clientY;
+
+    if ('touches' in e) {
+        if (e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else {
+             return { x: 0, y: 0 };
+        }
+    } else {
+        clientX = (e as React.MouseEvent).clientX;
+        clientY = (e as React.MouseEvent).clientY;
+    }
+
     return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
     };
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
@@ -63,7 +78,7 @@ const ImageEditorModal: React.FC<ImageEditorModalProps> = ({ imageUrl, onSave, o
     setIsDrawing(true);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -76,15 +91,6 @@ const ImageEditorModal: React.FC<ImageEditorModalProps> = ({ imageUrl, onSave, o
     ctx.lineWidth = brushSize; // This is in internal pixels. Visual size scales with zoom.
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    
-    // For eraser, we can just paint white if the background is assumed to be the image.
-    // If we were dealing with layers, we'd use 'destination-out'.
-    // Painting white over the image is effectively "erasing the red markup" to restore the base (if base is white) 
-    // OR it acts as a white markup. 
-    // Since the prompt instructs the AI to ignore "markup lines", painting white is treated as markup too.
-    // Ideally, "Erase" should restore the original image pixels, but we don't have layers here.
-    // So "Eraser" acts as a "White Brush". 
-    // To make it distinct, maybe we stick to just painting over.
     
     ctx.stroke();
   };
@@ -139,11 +145,16 @@ const ImageEditorModal: React.FC<ImageEditorModalProps> = ({ imageUrl, onSave, o
              onMouseMove={draw}
              onMouseUp={stopDrawing}
              onMouseLeave={stopDrawing}
+             onTouchStart={startDrawing}
+             onTouchMove={draw}
+             onTouchEnd={stopDrawing}
+             onTouchCancel={stopDrawing}
              style={{ 
                  width: canvasRef.current ? canvasRef.current.width * zoom : 'auto', 
                  height: canvasRef.current ? canvasRef.current.height * zoom : 'auto',
                  maxWidth: 'none', // Allow overflow for scrolling
-                 maxHeight: 'none'
+                 maxHeight: 'none',
+                 touchAction: 'none' // CRITICAL for iPad: prevents scrolling while drawing
              }}
              className="border border-surface-lighter shadow-lg cursor-crosshair bg-white block"
            />

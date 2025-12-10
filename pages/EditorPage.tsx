@@ -12,7 +12,7 @@ import MediaPreviewModal from '../components/MediaPreviewModal';
 import useHistoryState from '../hooks/useHistoryState';
 import * as service from '../services/geminiService';
 import * as projectService from '../services/projectService';
-import type { Asset, VeoGenerationMessages, User, Project, EditorState, AnimationConfig, AnimationPreset, GenerationMode } from '../types';
+import type { Asset, VeoGenerationMessages, User, Project, EditorState, AnimationConfig, AnimationPreset, GenerationMode, StrictnessLevel } from '../types';
 
 const VEO_GENERATION_MESSAGES: VeoGenerationMessages = {
   0: "Warming up the digital loom...",
@@ -26,6 +26,7 @@ const VEO_GENERATION_MESSAGES: VeoGenerationMessages = {
 const INITIAL_EDITOR_STATE: EditorState = {
   currentStep: 'upload',
   generationMode: 'default',
+  strictness: 'balanced',
   uploadedAssets: [],
   generatedFlatLays: [],
   selectedFlatLays: [], 
@@ -359,6 +360,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     const { originalB64 } = primaryAsset;
     const mimeType = primaryAsset.originalFile.type;
     const mode = editorState.generationMode;
+    const strictness = editorState.strictness;
     
     // Collect all uploaded images to use as reference context for 3D generations
     const allAssetsB64 = editorState.uploadedAssets.map(a => a.originalB64);
@@ -369,7 +371,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         // --- Helper to generate Strict and Flexible sets ---
         const generateStrictSet = async (suffix = '') => {
              try {
-                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
+                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode, strictness);
                  newGeneratedAssets.push({
                     id: `asset-strict-flat-${Date.now()}${suffix}`,
                     type: 'image',
@@ -381,7 +383,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              
              try {
                  // Use ALL assets for 3D mockup to improve angle accuracy
-                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode);
+                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode, strictness);
                  newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}${suffix}`,
                     type: 'image',
@@ -395,7 +397,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
         const generateFlexibleSet = async (suffix = '') => {
              try {
                 // Use ALL assets for flexible photo
-                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode);
+                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode, strictness);
                 newGeneratedAssets.push({
                    id: `asset-flex-photo-${Date.now()}${suffix}`,
                    type: 'image',
@@ -407,7 +409,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
              try {
                  if (!suffix) setLoadingMessage("Generating Flexible 3D Video...");
-                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode));
+                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode, strictness));
                  videoAsset.label = `Flexible Mode: 3D Video${suffix}`;
                  newGeneratedAssets.push(videoAsset);
              } catch (e: any) { 
@@ -426,7 +428,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 1. Strict Flat Lay (Uses Primary)
             setLoadingMessage("Generating Strict Flat Lay...");
             try {
-                const res1 = await service.generateStrictFlatLay(originalB64, mimeType, 'strict');
+                const res1 = await service.generateStrictFlatLay(originalB64, mimeType, 'strict', strictness);
                 newGeneratedAssets.push({ 
                     id: `asset-strict-flat-${Date.now()}`, type: 'image', label: 'Strict Mode: Flat Lay',
                     originalFile: { name: 'strict-flatlay.png', type: res1.mimeType }, originalB64: res1.base64
@@ -436,7 +438,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 2. Strict 3D Mockup (Uses All References)
             setLoadingMessage("Generating Strict 3D Mockup...");
             try {
-                const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'strict');
+                const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'strict', strictness);
                 newGeneratedAssets.push({
                     id: `asset-strict-3d-${Date.now()}`, type: 'image', label: 'Strict Mode: 3D Mockup',
                     originalFile: { name: 'strict-mockup.png', type: res2.mimeType }, originalB64: res2.base64
@@ -446,7 +448,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 3. Flexible Studio Photo (Uses All References)
             setLoadingMessage("Generating Flexible Studio Photo...");
             try {
-                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'flexible');
+                const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'flexible', strictness);
                 newGeneratedAssets.push({
                     id: `asset-flex-photo-${Date.now()}`, type: 'image', label: 'Flexible Mode: Studio Photo',
                     originalFile: { name: 'flexible-photo.png', type: res3.mimeType }, originalB64: res3.base64
@@ -456,7 +458,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 4. Ecommerce Mockup (Uses All References)
             setLoadingMessage("Generating Ecommerce Mockup...");
             try {
-                const res4 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'ecommerce');
+                const res4 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'ecommerce', strictness);
                 newGeneratedAssets.push({
                     id: `asset-ecom-mockup-${Date.now()}`, type: 'image', label: 'Ecommerce Mode: Mockup',
                     originalFile: { name: 'ecommerce-mockup.png', type: res4.mimeType }, originalB64: res4.base64
@@ -466,7 +468,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 5. Luxury Photo (Uses All References)
             setLoadingMessage("Generating Luxury Photo...");
             try {
-                const res5 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'luxury');
+                const res5 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, 'luxury', strictness);
                 newGeneratedAssets.push({
                     id: `asset-luxury-photo-${Date.now()}`, type: 'image', label: 'Luxury Mode: Photo',
                     originalFile: { name: 'luxury-photo.png', type: res5.mimeType }, originalB64: res5.base64
@@ -476,7 +478,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 6. Complex Material Mockup (Uses All References)
             setLoadingMessage("Generating Complex Material Mockup...");
             try {
-                const res6 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'complex');
+                const res6 = await service.generateStrict3DMockup(allAssetsB64, mimeType, 'complex', strictness);
                 newGeneratedAssets.push({
                     id: `asset-complex-mockup-${Date.now()}`, type: 'image', label: 'Complex Mode: Mockup',
                     originalFile: { name: 'complex-mockup.png', type: res6.mimeType }, originalB64: res6.base64
@@ -486,7 +488,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             // 7. Video (Uses Primary)
             setLoadingMessage("Generating Animated Video...");
             try {
-                const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, 'default'));
+                const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, 'default', strictness));
                 videoAsset.label = 'Default 5X: Video';
                 newGeneratedAssets.push(videoAsset);
             } catch (e) { console.warn(e); }
@@ -507,7 +509,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              
              // Generate 1 Flat Lay
              try {
-                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode);
+                 const res1 = await service.generateStrictFlatLay(originalB64, mimeType, mode, strictness);
                  newGeneratedAssets.push({
                     id: `asset-${mode}-flat-${Date.now()}`, type: 'image', label: `${mode}: Flat Lay`,
                     originalFile: { name: `${mode}-flat.png`, type: res1.mimeType }, originalB64: res1.base64
@@ -516,7 +518,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
              // Generate 1 Mockup (All refs)
              try {
-                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode);
+                 const res2 = await service.generateStrict3DMockup(allAssetsB64, mimeType, mode, strictness);
                  newGeneratedAssets.push({
                     id: `asset-${mode}-mockup-${Date.now()}`, type: 'image', label: `${mode}: 3D Mockup`,
                     originalFile: { name: `${mode}-mockup.png`, type: res2.mimeType }, originalB64: res2.base64
@@ -525,7 +527,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
              // Generate 1 Studio Photo (All refs)
              try {
-                 const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode);
+                 const res3 = await service.generateFlexibleStudioPhoto(allAssetsB64, mimeType, mode, strictness);
                  newGeneratedAssets.push({
                     id: `asset-${mode}-photo-${Date.now()}`, type: 'image', label: `${mode}: Studio Photo`,
                     originalFile: { name: `${mode}-photo.png`, type: res3.mimeType }, originalB64: res3.base64
@@ -535,7 +537,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
              // Generate 1 Video
              setLoadingMessage(`Generating ${mode} Video...`);
              try {
-                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode));
+                 const videoAsset = await handleVeoOperation(() => service.generateFlexibleVideo(originalB64, mimeType, mode, strictness));
                  videoAsset.label = `${mode}: Video`;
                  newGeneratedAssets.push(videoAsset);
              } catch (e) { console.warn(e); }
@@ -637,7 +639,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 setLoadingMessage("Generating 3D Static Mockup...");
                 const base64Images = selectedAssets.map(a => a.originalB64);
                 // Use generationMode from state to pass context
-                const res = await service.generateStrict3DMockup(base64Images, primaryAsset.originalFile.type, editorState.generationMode);
+                const res = await service.generateStrict3DMockup(base64Images, primaryAsset.originalFile.type, editorState.generationMode, editorState.strictness);
                 const staticAsset: Asset = {
                     id: `asset-static-${Date.now()}`,
                     type: 'image',
@@ -653,7 +655,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             tasks.push((async () => {
                 let prompt = "A short hyper realistic 3D mock up video. ";
                 prompt += "CATEGORY ANALYSIS: IF CLOTHING -> Use INVISIBLE GHOST MANNEQUIN (Hollow form, floating, no visible body, show inside collar). IF ACCESSORY (Watch, Bag, Shoe) -> Display as floating 3D object (No mannequin). DO NOT morph accessories into clothing. ";
-                prompt += "Video Requirements: Clean professional studio lighting, minimal seamless background. 4K visual detail. The product must move naturally. ";
+                prompt += "Video Requirements: Clean professional studio lighting, minimal seamless background. 8K visual detail. The product must move naturally. ";
                 
                 if (customPrompt) {
                   prompt += `The animation should show the product ${customPrompt}.`
@@ -670,7 +672,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                 }
                 
                 // Pass generator function
-                const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
+                const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio, editorState.strictness));
                 videoAsset.label = 'Animated Video';
                 setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
             })());
@@ -723,7 +725,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
     setLoadingMessage("Placing your animation in a new scene...");
     try {
         // Pass generator function
-        const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio));
+        const videoAsset = await handleVeoOperation(() => service.generateVideoFromImage(primaryAsset.originalB64, primaryAsset.originalFile.type, prompt, aspectRatio, editorState.strictness));
         videoAsset.label = 'Scene Animation';
         setEditorState(prev => ({ ...prev, animatedMockup: videoAsset }));
     } catch (e: any) {
@@ -739,6 +741,10 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
   const handleModeChange = (mode: GenerationMode) => {
       setEditorState(prev => ({ ...prev, generationMode: mode }));
+  };
+
+  const handleStrictnessChange = (strictness: StrictnessLevel) => {
+      setEditorState(prev => ({ ...prev, strictness: strictness }));
   };
 
   const handleSaveProject = async (projectName: string) => {
@@ -858,6 +864,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
             onEditFlatLay={() => setIsEditorModalOpen(true)}
             onDownloadAssets={downloadResults}
             onModeChange={handleModeChange}
+            onStrictnessChange={handleStrictnessChange}
             onNextStep={handleNextStep}
         />
       </div>

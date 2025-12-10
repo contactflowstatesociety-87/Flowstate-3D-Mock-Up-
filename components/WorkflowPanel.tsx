@@ -1,11 +1,12 @@
 
 import React from 'react';
-import type { EditorState, AnimationConfig, GenerationMode } from '../types';
+import type { EditorState, AnimationConfig, GenerationMode, StrictnessLevel } from '../types';
 import Step1Upload from './workflow/Step1_Upload';
 import Step2FlatLay from './workflow/Step2_FlatLay';
 import Step3Animate from './workflow/Step3_Animate';
 import Step4Scene from './workflow/Step4_Scene';
 import ModeSelector from './ModeSelector';
+import StrictnessSelector from './StrictnessSelector';
 
 interface WorkflowPanelProps {
   editorState: EditorState;
@@ -20,6 +21,7 @@ interface WorkflowPanelProps {
   onEditFlatLay?: () => void;
   onDownloadAssets?: () => void;
   onModeChange: (mode: GenerationMode) => void;
+  onStrictnessChange: (strictness: StrictnessLevel) => void;
   onNextStep?: () => void;
 }
 
@@ -43,9 +45,9 @@ const WorkflowStep: React.FC<{ number: number; title: string; isActive: boolean;
 const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
     const { 
         editorState, isLoading, onFilesUploaded, onGenerateFlatLays, onAnimate, onGenerateScene, onUpdateAnimationConfig, onClose,
-        onDownloadAllFlatLays, onEditFlatLay, onDownloadAssets, onModeChange, onNextStep
+        onDownloadAllFlatLays, onEditFlatLay, onDownloadAssets, onModeChange, onStrictnessChange, onNextStep
     } = props;
-    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLays, animatedMockup, staticMockup, animationConfig, generationMode } = editorState;
+    const { currentStep, uploadedAssets, generatedFlatLays, selectedFlatLays, animatedMockup, staticMockup, animationConfig, generationMode, strictness } = editorState;
   
     return (
     <aside className="w-full md:w-96 bg-surface-DEFAULT flex flex-col h-full border-r border-surface-light shadow-xl z-20">
@@ -67,9 +69,10 @@ const WorkflowPanel: React.FC<WorkflowPanelProps> = (props) => {
         )}
       </div>
       
-      {/* Mode Selector */}
-      <div className="px-6 pt-6 pb-2 z-20 relative bg-surface-DEFAULT">
+      {/* Mode & Strictness Selector */}
+      <div className="px-6 pt-6 pb-2 z-20 relative bg-surface-DEFAULT flex flex-col">
         <ModeSelector selectedMode={generationMode} onChangeMode={onModeChange} />
+        <StrictnessSelector value={strictness} onChange={onStrictnessChange} />
       </div>
       
       <div className="flex-grow overflow-y-auto px-6 pb-6 space-y-2 custom-scrollbar">
