@@ -7,9 +7,10 @@ interface Props {
   isLoading: boolean;
   config: AnimationConfig;
   onConfigChange: (config: Partial<AnimationConfig>) => void;
+  hasGeneratedAssets: boolean;
 }
 
-const Step4Scene: React.FC<Props> = ({ onGenerateScene, isLoading, config, onConfigChange }) => {
+const Step4Scene: React.FC<Props> = ({ onGenerateScene, isLoading, config, onConfigChange, hasGeneratedAssets }) => {
   const [prompt, setPrompt] = useState('');
   const aspectRatios: AspectRatio[] = ['16:9', '9:16'];
   const aspectRatioLabels: Record<AspectRatio, string> = { '16:9': 'Landscape', '9:16': 'Portrait' };
@@ -49,13 +50,30 @@ const Step4Scene: React.FC<Props> = ({ onGenerateScene, isLoading, config, onCon
         </div>
       </div>
 
-      <button
-        onClick={handleGenerate}
-        disabled={isLoading || !prompt.trim()}
-        className="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-light disabled:text-text-subtle disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/10"
-      >
-        {isLoading ? 'Generating Scene...' : 'Generate Scene'}
-      </button>
+      {!hasGeneratedAssets && (
+        <button
+          onClick={handleGenerate}
+          disabled={isLoading || !prompt.trim()}
+          className="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-light disabled:text-text-subtle disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/10"
+        >
+          {isLoading ? 'Generating Scene...' : 'Generate Scene'}
+        </button>
+      )}
+
+      {hasGeneratedAssets && (
+          <div className="pt-6 border-t border-surface-light mt-2 space-y-3">
+             <button
+                 onClick={handleGenerate}
+                 disabled={isLoading || !prompt.trim()}
+                 className="w-full bg-surface-light text-text font-medium py-3 rounded-lg hover:bg-surface-lighter hover:text-white border border-surface-lighter transition-all text-sm flex items-center justify-center gap-2"
+               >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Generate Again (Create Alternative)
+             </button>
+          </div>
+      )}
     </>
   );
 };

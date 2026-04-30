@@ -29,6 +29,8 @@ const Step3Animate: React.FC<Props> = ({ onAnimate, onDownloadAssets, isLoading,
   else if (config.generateStatic) buttonLabel = "Generate Static Mockup";
   else if (config.generateVideo) buttonLabel = "Generate Animated Video";
 
+  const isGenerateDisabled = isLoading || (!config.generateStatic && !config.generateVideo) || (config.generateVideo && !config.preset && !config.customPrompt);
+
   return (
     <>
       <p className="text-text-subtle text-sm leading-relaxed">
@@ -102,24 +104,37 @@ const Step3Animate: React.FC<Props> = ({ onAnimate, onDownloadAssets, isLoading,
         </div>
       </div>
       
-      <button
-        onClick={onAnimate}
-        disabled={isLoading || (!config.generateStatic && !config.generateVideo) || (config.generateVideo && !config.preset && !config.customPrompt)}
-        className="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-light disabled:text-text-subtle disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/10 mt-2"
-      >
-        {isLoading ? 'Processing...' : buttonLabel}
-      </button>
+      {!hasGeneratedAssets && (
+        <button
+          onClick={onAnimate}
+          disabled={isGenerateDisabled}
+          className="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary-hover disabled:bg-surface-light disabled:text-text-subtle disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/10 mt-2"
+        >
+          {isLoading ? 'Processing...' : buttonLabel}
+        </button>
+      )}
 
        {hasGeneratedAssets && (
-        <div className="pt-6 border-t border-surface-light mt-2">
+        <div className="pt-6 border-t border-surface-light mt-2 space-y-3">
              <button
               onClick={onDownloadAssets}
-              className="w-full bg-surface-light text-text font-medium py-2.5 rounded-lg hover:bg-surface-lighter transition-colors flex items-center justify-center gap-2 border border-surface-lighter"
+              className="w-full bg-surface-light text-text font-medium py-3 rounded-lg hover:bg-surface-lighter transition-colors flex items-center justify-center gap-2 border border-surface-lighter"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Results
+           </button>
+           
+           <button
+             onClick={onAnimate}
+             disabled={isGenerateDisabled}
+             className="w-full bg-surface-light text-text font-medium py-2 rounded-lg hover:bg-surface-lighter hover:text-white border border-surface-lighter transition-all text-sm flex items-center justify-center gap-2"
+           >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Generate Again (Replace)
            </button>
         </div>
        )}

@@ -48,6 +48,7 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({ asset, onClose, o
                 src={src} 
                 alt="Preview" 
                 className="max-w-full max-h-full rounded-lg shadow-2xl object-contain"
+                referrerPolicy="no-referrer"
             />
         )}
       </div>

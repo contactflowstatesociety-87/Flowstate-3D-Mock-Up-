@@ -20,7 +20,7 @@ const HomePage: React.FC<HomePageProps> = ({ onGetStarted, user }) => {
     <div className="flex flex-col min-h-screen bg-surface-DEFAULT text-text">
       <header className="p-4 md:p-6">
         <div className="container mx-auto flex justify-between items-center">
-          <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/98A2DE26-3B81-4646-BDF1-BDB932920CF7%202.png.PNG" alt="Company Logo" className="h-20 w-20" />
+          <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/98A2DE26-3B81-4646-BDF1-BDB932920CF7%202.png.PNG" alt="Company Logo" className="h-20 w-20" referrerPolicy="no-referrer" />
           <button className="md:hidden">
             <MenuIcon />
           </button>
@@ -34,7 +34,7 @@ const HomePage: React.FC<HomePageProps> = ({ onGetStarted, user }) => {
 
       <main className="flex-grow flex flex-col items-center justify-center text-center p-4">
         <div className="mb-8">
-            <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/Flowstate%20society%20white.png" alt="Flowstate Society Logo" className="h-96 w-auto" />
+            <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/Flowstate%20society%20white.png" alt="Flowstate Society Logo" className="h-96 w-auto" referrerPolicy="no-referrer" />
         </div>
         <h1 className="text-5xl md:text-7xl font-bold tracking-tighter mb-4">
           3D Animated <br /> Mockups in Seconds.

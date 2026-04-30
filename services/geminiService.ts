@@ -39,26 +39,41 @@ const withRetry = async <T>(
 export const getFriendlyErrorMessage = (error: any): string => {
   const msg = (error.message || error.toString()).toLowerCase();
   
-  if (msg.includes('api key') || msg.includes('403') || msg.includes('requested entity was not found')) {
-    return "API Key Error: Access denied. Please ensure you have selected a valid paid API key in the settings.";
+  // 1. API Key / Permission Issues
+  if (msg.includes('api key') || msg.includes('403') || msg.includes('permission denied')) {
+    return "API Key Error: Access denied. Please ensure you have selected a valid paid API key in the settings. Free tier keys do not support video generation.";
   }
-  if (msg.includes('safety') || msg.includes('blocked') || msg.includes('policy')) {
-    return "Content Blocked: The AI safety filters blocked this request. Please try a different image or a milder prompt.";
+  
+  // 2. Billing / Quota Issues
+  if (msg.includes('quota') || msg.includes('429') || msg.includes('resource exhausted')) {
+    return "Quota Exceeded: You have hit the API rate limit for your project. Please check your Google Cloud billing or wait a minute before trying again.";
   }
-  if (msg.includes('quota') || msg.includes('429')) {
-    return "Quota Exceeded: You have hit the API rate limit. Please wait a moment or check your Google Cloud billing.";
+
+  // 3. Safety / Policy Issues
+  if (msg.includes('safety') || msg.includes('blocked') || msg.includes('policy') || msg.includes('finishreason')) {
+    return "Content Filtered: The AI safety filters blocked this request. This often happens with skin exposure or complex prompts. Please try a different image or a milder prompt.";
   }
-  if (msg.includes('503') || msg.includes('overloaded')) {
-    return "Service Overloaded: Google's AI servers are currently experiencing high traffic. Please try again in a moment.";
+  
+  // 4. Server Issues
+  if (msg.includes('503') || msg.includes('overloaded') || msg.includes('unavailable')) {
+    return "Server Busy: Google's AI servers are currently experiencing high traffic. We automatically retried, but they are still busy. Please wait 30 seconds and try again.";
   }
+
+  // 5. Input Issues
   if (msg.includes('400') || msg.includes('invalid_argument')) {
     return "Invalid Input: The image format or size might be unsupported. Please ensure you are using a standard PNG or JPEG under 20MB.";
   }
-  if (msg.includes('candidate')) { // Often "No candidate was returned"
-    return "Generation Failed: The model couldn't generate a valid result for this input. Please try a different image.";
+
+  // 6. Generic "No Result" (often due to filters that didn't throw a standard error)
+  if (msg.includes('candidate') || msg.includes('response was not found')) {
+    return "Generation Failed: The model couldn't generate a valid result for this input. It may have been filtered silently. Please try a different image.";
   }
   
-  return `An unexpected error occurred: ${error.message || "Unknown error"}`;
+  if (msg.includes('requested entity was not found')) {
+      return "Video Asset Expired: The generated video link has expired or is invalid. Please generate the video again.";
+  }
+  
+  return `An unexpected error occurred: ${error.message || "Unknown error"}. Please try again.`;
 };
 
 const modeHeaderMap: Record<string, string> = {
@@ -214,6 +229,8 @@ INPUT CONTEXT: Use the primary image and any provided reference images to constr
 ${RESOLUTION_RULES}
 ${GHOST_MANNEQUIN_RULES}
 
+GHOST MANNEQUIN PROTOCOL: The clothing MUST appear to be worn by an INVISIBLE PERSON and MUST look like it is empty inside (show the inside back of the neck/collar to prove it is hollow). Absolutely no visible mannequin parts (clear, plastic, wireframe, skin, body parts) are allowed. If the input image contains a mannequin, REMOVE IT completely and replace it with the hollow interior view.
+
 CATEGORY ANALYSIS & RULES:
 1. IF CLOTHING (Jacket, Hoodie, Shirt, Pants):
    - TRANSFORM GEOMETRY: Convert flat lay input into a VOLUMETRIC 3D FORM.
@@ -283,7 +300,8 @@ ${strictnessPrompt}
 PHASE 3: FLEXIBLE MODE 3D ANIMATED VIDEO
 Generate a 4K 3D animated mockup video.
 
-${RESOLUTION_RULES}
+RESOLUTION PROTOCOL: Output MUST be 4K visual fidelity or higher. Ensure textures are upscaled and the final output is hyper-realistic.
+
 ${GHOST_MANNEQUIN_RULES}
 
 QUALITY PROTOCOL:
@@ -331,7 +349,8 @@ export const generateVideoFromImage = async (base64Image: string, mimeType: stri
     // Append safety checks to user/system prompt
     const safePrompt = `${prompt} 
     ${strictnessPrompt}
-    ${RESOLUTION_RULES}
+    
+    RESOLUTION PROTOCOL: Output MUST be 4K visual fidelity or higher. Ensure textures are upscaled and the final output is hyper-realistic.
     ${GHOST_MANNEQUIN_RULES}
 
     CRITICAL QUALITY CONTROL: 

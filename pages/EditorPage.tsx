@@ -549,7 +549,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
 
         setEditorState(prev => ({
             ...prev,
-            generatedFlatLays: newGeneratedAssets,
+            generatedFlatLays: [...prev.generatedFlatLays, ...newGeneratedAssets], // Append instead of replace for alternatives
             selectedFlatLays: [] 
         }));
 
@@ -882,7 +882,7 @@ const EditorPage: React.FC<EditorPageProps> = ({ resetApiKeyStatus, user, onLogo
                     </svg>
                 </button>
 
-                <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/98A2DE26-3B81-4646-BDF1-BDB932920CF7%202.png.PNG" alt="Company Logo" className="h-20 w-20" />
+                <img src="https://hfjhiwexlywppvuftjfu.supabase.co/storage/v1/object/public/Flowstate%203D%20Mock%20Up/98A2DE26-3B81-4646-BDF1-BDB932920CF7%202.png.PNG" alt="Company Logo" className="h-20 w-20" referrerPolicy="no-referrer" />
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
                 <Tooltip text="Undo (Ctrl+Z)">

@@ -51,7 +51,7 @@ const AssetItem: React.FC<{
       {isVideo ? (
         <video ref={videoRef} src={src} controls muted loop className="w-full h-full object-contain" />
       ) : (
-        <img src={src} alt={asset.prompt || 'asset'} className="w-full h-full object-contain" />
+        <img src={src} alt={asset.prompt || 'asset'} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
       )}
 
       {/* Overlay Controls - Visible on Hover */}
